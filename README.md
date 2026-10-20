@@ -110,14 +110,21 @@ The popup is 320 px wide and follows the Windows light or dark theme.
 - Each row has a status dot, "project · branch" (or "project · alias" once
   you rename it), the session's name or first prompt, and a state line such
   as "Needs permission: Bash · 1m", "Done 2m ago" or "Working 6m · Edit".
-- The sound chip shows the row's sound. Its ▶ button plays it; clicking the
-  name opens the sound picker.
-- The ⋯ button opens the row menu: Rename…, Mute, Copy resume command
-  (`claude --resume <id>`), Open folder, and Forget, which hides the row.
+- The sound chip shows the row's sound. The speaker at its left mutes or
+  unmutes the session, the name opens the sound picker, and ▶ plays the
+  sound.
+- At the right of the title, the expand button brings the session's
+  terminal window to the front, and ⋯ opens the row menu: Rename… and
+  Forget, which hides the row. Pointing at a row also shows a button that
+  copies its resume command (`claude --resume <id>`) and one that opens its
+  folder. Ended rows have no expand button.
 - A popup that stays open for half a second marks the finished rows in it as
   seen, and they turn gray.
-- Clicking a row marks it seen and brings its terminal window to the front.
-  The popup closes when the window comes forward.
+- Clicking a row's title or state line does what the expand button does: it
+  marks the session seen and brings its terminal window to the front. The
+  popup closes when the window comes forward. When the window stays put, the
+  state line says why for a few seconds, for example "Couldn't find its
+  window".
 
 ## Sounds
 
@@ -275,7 +282,8 @@ so a newer Claude Code may behave differently.
   one, or while another window's title names the same project; then the
   topmost of those windows comes forward.
 - Claude desktop-app sessions focus the Claude app. Remote Control bridges
-  and SDK runs have no window, so clicking them only marks them seen.
+  and SDK runs have no window: clicking one marks it seen, and in the popup
+  its row says it couldn't find the window.
 - A failed turn plays the same pattern as a finished one.
 - `/clear` starts a new session id, so the session loses its alias, its own
   sound and its mute.

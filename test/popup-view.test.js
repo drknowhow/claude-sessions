@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { popupModel, ENDED_SHOWN } = require('../popup-view');
+const { popupModel, ENDED_SHOWN, focusNotice } = require('../popup-view');
 const { BUILT_IN } = require('../sounds');
 
 const NOW = Date.UTC(2026, 9, 19, 14, 0, 0);
@@ -76,6 +76,17 @@ test('header shows do not disturb, volume as a percentage, and an empty state', 
   assert.strictEqual(m.hooksInstalled, false);
   assert.deepStrictEqual(popupModel({ sessions: {}, config: config({ dndUntil: NOW - 1, volume: 7 }), now: NOW }).header.dnd, { on: false, until: '' });
   assert.strictEqual(popupModel({ sessions: {}, config: config({ volume: 7 }), now: NOW }).volume, 100);
+});
+
+test('each reason focus.js gives for a window that stayed put has a plain notice', () => {
+  // The reasons as focus.js writes them.
+  assert.strictEqual(focusNotice('no process'), 'Its process has ended');
+  assert.strictEqual(focusNotice('process gone'), 'Its process has ended');
+  assert.strictEqual(focusNotice('no window (claude.exe < cmd.exe)'), "Couldn't find its window");
+  assert.strictEqual(focusNotice('no window (no chain)'), "Couldn't find its window");
+  assert.strictEqual(focusNotice('Windows kept the foreground'), 'Windows kept another window in front');
+  assert.strictEqual(focusNotice('native layer: koffi failed to load'), "Couldn't show its window");
+  assert.strictEqual(focusNotice(undefined), "Couldn't show its window");
 });
 
 test('only the newest ended sessions are listed', () => {

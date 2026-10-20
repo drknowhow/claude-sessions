@@ -41,8 +41,18 @@ function icon(viewBox, d, cls) {
 }
 
 const playIcon = () => icon('0 0 10 10', 'M2.4 1.3v7.4L8.7 5z');
-const muteIcon = () => icon('0 0 12 12', 'M1.5 4.6h2l3-2.4v7.6l-3-2.4h-2zM8.4 4.6l2.8 2.8M11.2 4.6L8.4 7.4', 'mute-icon');
 const checkIcon = () => icon('0 0 14 14', 'M3 7.4l2.6 2.6L11 4.4', 'sound-check');
+
+// Stroke icons on a 16-unit grid for the row's buttons.
+const SPEAKER = 'M2 6h2.5L8 3v10L4.5 10H2z';
+const icon16 = (d, cls) => icon('0 0 16 16', d, cls);
+const expandIcon = () => icon16('M10 2.5h3.5V6M13.5 2.5L9.5 6.5M6 13.5H2.5V10M2.5 13.5l4-4');
+const folderIcon = () => icon16('M2 4.5a1 1 0 0 1 1-1h3.2l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z');
+const copyIcon = () => icon16('M4.5 6.5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1zM2.5 10.5v-7a1 1 0 0 1 1-1h7');
+const copiedIcon = () => icon16('M3.5 8.5l3 3 6-6.5');
+const moreIcon = () => icon16('M3.5 8h.01M8 8h.01M12.5 8h.01');
+const soundOnIcon = () => icon16(`${SPEAKER}M10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6.3 6.3 0 0 1 0 9`, 'sound-on');
+const soundOffIcon = () => icon16(`${SPEAKER}M10.5 6l4 4M14.5 6l-4 4`, 'sound-off');
 
 function setText(node, text) {
   if (node.textContent !== text) node.textContent = text;
@@ -97,24 +107,54 @@ function renderHeader() {
 
 // ---------------------------------------------------------------- rows
 
+const NOTICE_MS = 2600; // how long a row says its window did not come forward
+const COPIED_MS = 1200; // how long the copy button shows its check
+const notices = new Map(); // key -> { text }, shown in place of the state line
+
+function tool(cls, svg, onClick) {
+  const b = el('button', `tool ${cls}`);
+  b.append(svg);
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+// Two lines: the title with the row's buttons, then the state line with the
+// sound chip. Copy and folder show while the pointer is over the row.
 function makeRow(key) {
   const node = el('div', 'row');
   node.setAttribute('role', 'listitem');
   const dot = el('span', 'dot');
+  const body = el('div', 'row-body');
 
-  const main = el('div', 'row-main');
   const title = el('div', 'row-title');
   const where = el('span', 'row-where');
   const name = el('span', 'row-name');
   title.append(where, name);
+  title.addEventListener('click', () => showWindow(key));
+
+  const copy = tool('reveal', copyIcon(), () => copyResume(key));
+  const folder = tool('reveal', folderIcon(), () => api.openFolder(key));
+  folder.title = 'Open its folder';
+  const expand = tool('expand', expandIcon(), () => showWindow(key));
+  expand.title = 'Show its terminal window';
+  const more = tool('more', moreIcon(), () => api.rowMenu(key));
+  more.title = 'More';
+  const tools = el('div', 'row-tools');
+  tools.append(copy, folder, expand, more);
+
+  const top = el('div', 'row-top');
+  top.append(title, tools);
+
   const line = el('div', 'row-line');
-  main.append(title, line);
-  main.addEventListener('click', () => api.activateRow(key));
+  line.addEventListener('click', () => showWindow(key));
 
   const chip = el('div', 'chip');
+  const mute = el('button', 'chip-mute');
+  mute.append(soundOnIcon(), soundOffIcon());
+  mute.addEventListener('click', () => api.mute(key));
   const chipLabel = el('button', 'chip-label');
   const chipText = el('span');
-  chipLabel.append(muteIcon(), chipText);
+  chipLabel.append(chipText);
   chipLabel.addEventListener('click', () => openPicker(key));
   const play = el('button', 'chip-play');
   play.append(playIcon());
@@ -122,28 +162,81 @@ function makeRow(key) {
     const r = rowByKey(key);
     if (r) api.preview(r.sound.id);
   });
-  chip.append(chipLabel, play);
+  chip.append(mute, chipLabel, play);
 
-  const more = el('button', 'more', '⋯');
-  more.title = 'More';
-  more.addEventListener('click', () => api.rowMenu(key));
+  const bottom = el('div', 'row-bottom');
+  bottom.append(line, chip);
 
-  node.append(dot, main, chip, more);
-  return { node, dot, main, title, where, name, line, chip, chipLabel, chipText, play };
+  body.append(top, bottom);
+  node.append(dot, body);
+  return { node, dot, title, where, name, line, copy, folder, expand, chip, mute, chipLabel, chipText, play, copiedTimer: 0 };
 }
 
 function updateRow(p, r) {
+  const notice = notices.get(r.key);
   p.node.className = `row ${r.state}${r.dimmed ? ' dimmed' : ''}`;
   p.dot.className = `dot ${r.state}`;
   setText(p.where, r.where);
   setText(p.name, r.name ? ` · ${r.name}` : '');
-  setText(p.line, r.line);
-  p.main.title = [fullName(r), r.cwd].filter(Boolean).join('\n');
+  p.line.classList.toggle('notice', !!notice);
+  setText(p.line, notice ? notice.text : r.line);
+  const tip = [fullName(r), r.cwd].filter(Boolean).join('\n');
+  p.title.title = tip;
+  p.line.title = tip;
+
+  p.copy.hidden = !r.resume;
+  if (!p.copiedTimer) p.copy.title = `Copy ${r.resume}`;
+  p.folder.hidden = !r.cwd;
+  p.expand.hidden = r.dimmed; // an ended session has no window to show
+
   p.chip.hidden = r.dimmed;
   p.chip.classList.toggle('muted', r.muted);
+  p.mute.hidden = !r.hasSession;
+  p.mute.setAttribute('aria-pressed', String(r.muted));
+  p.mute.title = r.muted ? 'Muted. Click to hear this session again' : 'Mute this session';
   setText(p.chipText, r.sound.label);
-  p.chipLabel.title = r.muted ? `${r.sound.label}, muted. Click to change the sound` : `${r.sound.label}. Click to change the sound`;
+  p.chipLabel.title = `${r.sound.label}${r.muted ? ', muted' : ''}. Click to change the sound`;
   p.play.title = `Play ${r.sound.label}`;
+}
+
+function refreshRow(key) {
+  const p = rowNodes.get(key);
+  const r = rowByKey(key);
+  if (p && r) updateRow(p, r);
+}
+
+/** Brings the session's terminal forward. Main hides the popup when it worked. */
+async function showWindow(key) {
+  const r = rowByKey(key);
+  if (!r || r.dimmed || renaming) return;
+  let res = null;
+  try { res = await api.activateRow(key); } catch { return; }
+  if (!res || res.ok) return;
+  const entry = { text: res.notice };
+  notices.set(key, entry);
+  refreshRow(key);
+  setTimeout(() => {
+    if (notices.get(key) !== entry) return;
+    notices.delete(key);
+    refreshRow(key);
+  }, NOTICE_MS);
+}
+
+async function copyResume(key) {
+  let ok = false;
+  try { ok = await api.copyResume(key); } catch { return; }
+  const p = rowNodes.get(key);
+  if (!ok || !p) return;
+  clearTimeout(p.copiedTimer);
+  p.copy.replaceChildren(copiedIcon());
+  p.copy.classList.add('copied');
+  p.copy.title = 'Copied';
+  p.copiedTimer = setTimeout(() => {
+    p.copiedTimer = 0;
+    p.copy.replaceChildren(copyIcon());
+    p.copy.classList.remove('copied');
+    refreshRow(key);
+  }, COPIED_MS);
 }
 
 /** Updates rows in place and moves a node only when its position changed. */
@@ -328,6 +421,7 @@ api.onRename((key) => startRename(key));
 
 api.onReset(() => {
   if (renaming) endRename(false);
+  notices.clear();
   pickerKey = null;
   show('list');
   rowsEl.scrollTop = 0;

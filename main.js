@@ -19,7 +19,7 @@ const { labelsFor } = require('./labels');
 const { iconSpec, iconPngs, drawIcon, encodePng, COLORS } = require('./tray-icon');
 const { createPlayer } = require('./player');
 const { createPopup } = require('./popup');
-const { popupModel } = require('./popup-view');
+const { popupModel, focusNotice } = require('./popup-view');
 
 // Alerts play from a hidden window that nobody clicks, so it may not wait for a gesture.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -99,12 +99,22 @@ function rowFor(key) {
   return sessions[String(key)] || null;
 }
 
-/** Marks the row seen and brings its terminal to the front. True when the window came forward. */
-function activate(row, source) {
+/** Marks the row seen and brings its terminal to the front. Returns focus.js's { ok, reason, … }. */
+function focusRow(row, source) {
   seen(row.pid);
   const r = focus.focusSession(row, aliasFor(row));
   log('focus', source, row.pid, r.ok ? `via ${r.via} ${JSON.stringify(r.title)}` : `failed: ${r.reason}`);
-  return r.ok;
+  return r;
+}
+
+/** True when the window came forward. */
+function activate(row, source) {
+  return focusRow(row, source).ok;
+}
+
+function toggleMute(sid) {
+  config.muted = sounds.setCapped(config.muted, sid, config.muted[sid] ? undefined : true);
+  configChanged();
 }
 
 // ---------------------------------------------------------------- alerts
@@ -312,20 +322,10 @@ function popupMenu(items) {
   }));
 }
 
+// Mute, copy and open folder are buttons on the row since 0.2.2.
 function rowMenuItems(key, row) {
-  const sid = row.sessionId;
-  const muted = !!(sid && config.muted[sid]);
   return [
-    { label: 'Rename…', enabled: !!sid, click: () => popup.send('popup:rename', key) },
-    {
-      label: 'Mute',
-      type: 'checkbox',
-      checked: muted,
-      enabled: !!sid,
-      click: () => { config.muted = sounds.setCapped(config.muted, sid, !muted || undefined); configChanged(); },
-    },
-    { label: 'Copy resume command', enabled: !!sid, click: () => clipboard.writeText(`claude --resume ${sid}`) },
-    { label: 'Open folder', enabled: !!row.cwd, click: () => shell.openPath(row.cwd) },
+    { label: 'Rename…', enabled: !!row.sessionId, click: () => popup.send('popup:rename', key) },
     { type: 'separator' },
     { label: 'Forget', click: () => dispatch({ type: 'forget', pid: row.pid, now: Date.now() }) },
   ];
@@ -376,10 +376,28 @@ async function addSound() {
 
 /** What the popup's renderer may ask for. popup.js drops messages from anywhere else. */
 function wirePopup() {
-  popup.on('popup:activate', (key) => {
+  // Answers { ok, notice }: the row shows the notice for a moment when the window stayed put.
+  popup.handle('popup:activate', (key) => {
     const row = rowFor(key);
+    if (!row) return { ok: false, notice: focusNotice('no process') };
+    const r = focusRow(row, 'popup');
     // The popup would cover the window it just brought forward.
-    if (row && activate(row, 'popup')) popup.dismiss();
+    if (r.ok) popup.dismiss();
+    return { ok: r.ok, notice: r.ok ? '' : focusNotice(r.reason) };
+  });
+  popup.on('popup:mute', (key) => {
+    const row = rowFor(key);
+    if (row && row.sessionId) toggleMute(row.sessionId);
+  });
+  popup.handle('popup:copy-resume', (key) => {
+    const row = rowFor(key);
+    if (!row || !row.sessionId) return false;
+    clipboard.writeText(`claude --resume ${row.sessionId}`);
+    return true;
+  });
+  popup.on('popup:open-folder', (key) => {
+    const row = rowFor(key);
+    if (row && row.cwd) shell.openPath(row.cwd).then((err) => { if (err) log('open folder failed', row.cwd, err); });
   });
   popup.on('popup:row-menu', (key) => {
     const row = rowFor(key);

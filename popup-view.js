@@ -59,4 +59,13 @@ function popupModel({ sessions, config, catalog = sounds.BUILT_IN, now = Date.no
   };
 }
 
-module.exports = { ENDED_SHOWN, popupModel };
+/** What a row's state line says for a moment when its window did not come forward. */
+function focusNotice(reason) {
+  const r = String(reason || '');
+  if (r === 'no process' || r === 'process gone') return 'Its process has ended';
+  if (r.startsWith('no window')) return "Couldn't find its window";
+  if (r === 'Windows kept the foreground') return 'Windows kept another window in front';
+  return "Couldn't show its window";
+}
+
+module.exports = { ENDED_SHOWN, popupModel, focusNotice };

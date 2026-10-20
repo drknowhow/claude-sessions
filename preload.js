@@ -14,7 +14,10 @@ contextBridge.exposeInMainWorld('popup', {
   // renderer -> main
   rowMenu: (key) => ipcRenderer.send('popup:row-menu', key),
   dndMenu: () => ipcRenderer.send('popup:dnd-menu'),
-  activateRow: (key) => ipcRenderer.send('popup:activate', key),
+  activateRow: (key) => ipcRenderer.invoke('popup:activate', key), // -> { ok, notice }
+  mute: (key) => ipcRenderer.send('popup:mute', key),
+  copyResume: (key) => ipcRenderer.invoke('popup:copy-resume', key), // -> true when copied
+  openFolder: (key) => ipcRenderer.send('popup:open-folder', key),
   setAlias: (key, text) => ipcRenderer.send('popup:alias', key, text),
   setSound: (key, id, scope) => ipcRenderer.send('popup:sound', key, id, scope),
   preview: (id) => ipcRenderer.send('popup:preview', id),
