@@ -87,6 +87,16 @@ test('each reason focus.js gives for a window that stayed put has a plain notice
   assert.strictEqual(focusNotice('Windows kept the foreground'), 'Windows kept another window in front');
   assert.strictEqual(focusNotice('native layer: koffi failed to load'), "Couldn't show its window");
   assert.strictEqual(focusNotice(undefined), "Couldn't show its window");
+  // Remote Control bridges and SDK runs have no window at all.
+  assert.strictEqual(focusNotice('no window (claude.exe < node.exe)', row(1, 'idle', { entrypoint: 'sdk-cli' })), 'It runs in the background, with no window');
+  assert.strictEqual(focusNotice('no window (no chain)', row(1, 'idle', { entrypoint: 'sdk-py' })), 'It runs in the background, with no window');
+  assert.strictEqual(focusNotice('no window (no chain)', row(1, 'idle')), "Couldn't find its window");
+});
+
+test('background rows are flagged so the popup hides their expand button', () => {
+  const sessions = bySessions(row(1, 'idle'), row(2, 'idle', { entrypoint: 'sdk-cli' }), row(3, 'idle', { entrypoint: 'claude-desktop' }));
+  const m = popupModel({ sessions, config: config({ showAll: true }), now: NOW });
+  assert.deepStrictEqual(Object.fromEntries(m.rows.map((r) => [r.key, r.background])), { 1: false, 2: true, 3: false });
 });
 
 test('only the newest ended sessions are listed', () => {

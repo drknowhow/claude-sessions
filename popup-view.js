@@ -25,6 +25,7 @@ function rowModel(row, config, catalog, now, dimmed) {
     resume: row.sessionId ? `claude --resume ${row.sessionId}` : '',
     cwd: row.cwd || '',
     dimmed,
+    background: state.isBackground(row),
   };
 }
 
@@ -60,10 +61,10 @@ function popupModel({ sessions, config, catalog = sounds.BUILT_IN, now = Date.no
 }
 
 /** What a row's state line says for a moment when its window did not come forward. */
-function focusNotice(reason) {
+function focusNotice(reason, row) {
   const r = String(reason || '');
   if (r === 'no process' || r === 'process gone') return 'Its process has ended';
-  if (r.startsWith('no window')) return "Couldn't find its window";
+  if (r.startsWith('no window')) return row && state.isBackground(row) ? 'It runs in the background, with no window' : "Couldn't find its window";
   if (r === 'Windows kept the foreground') return 'Windows kept another window in front';
   return "Couldn't show its window";
 }

@@ -60,6 +60,58 @@ test('with no owner in the chain, only a terminal window whose title matches is 
   assert.strictEqual(f.chooseWindow(chain, wins, ['wewe'], { byTitle: false }).window, null);
 });
 
+test('the terminal window that owns the shell\'s console wins over a title match', () => {
+  // Explorer started the shell and Windows Terminal took its console over, so
+  // the chain stops at cmd.exe; the session's tab is in window 1, not active.
+  const chain = [{ pid: 100, name: 'claude.exe' }, { pid: 50, name: 'cmd.exe' }];
+  const wins = [
+    { hwnd: 1, pid: 40, title: '✳ other', exe: 'WindowsTerminal.exe' },
+    { hwnd: 2, pid: 40, title: '✳ wewe', exe: 'WindowsTerminal.exe' },
+  ];
+  const consoles = new Map([[50, 1], [60, 2]]);
+  assert.deepStrictEqual(f.chooseWindow(chain, wins, ['wewe'], { consoles }), { window: wins[0], via: 'cmd.exe console' });
+  // It needs no title, so it also works where the title lookup is off.
+  assert.strictEqual(f.chooseWindow(chain, wins, ['nothing'], { byTitle: false, consoles }).window.hwnd, 1);
+  // A console owner that is not a visible window falls through to the title.
+  assert.strictEqual(f.chooseWindow(chain, wins, ['wewe'], { consoles: new Map([[50, 99]]) }).via, 'title');
+  // A window the shell owns itself is nearer than its console's host.
+  const own = [...wins, { hwnd: 4, pid: 50, title: 'cmd', exe: 'cmd.exe' }];
+  assert.strictEqual(f.chooseWindow(chain, own, ['wewe'], { consoles }).window.hwnd, 4);
+});
+
+test('pickWindow asks for console windows only when the cheap lookups find nothing or only a title', () => {
+  const chain = [{ pid: 100, name: 'claude.exe' }, { pid: 50, name: 'cmd.exe' }];
+  const wins = [
+    { hwnd: 1, pid: 40, title: '✳ other', exe: 'WindowsTerminal.exe' },
+    { hwnd: 2, pid: 40, title: '✳ wewe', exe: 'WindowsTerminal.exe' },
+  ];
+  const asked = [];
+  const ask = (pids) => { asked.push(pids); return new Map([[100, 1]]); };
+  // A title match alone: the console answer wins, and every pid in the chain is asked.
+  assert.deepStrictEqual(f.pickWindow(chain, wins, ['wewe'], { ask }), { window: wins[0], via: 'claude.exe console' });
+  assert.deepStrictEqual(asked, [[100, 50]]);
+  // A console the cheap lookup already found: no ask.
+  asked.length = 0;
+  assert.strictEqual(f.pickWindow(chain, wins, ['wewe'], { consoles: new Map([[50, 2]]), ask }).window.hwnd, 2);
+  assert.deepStrictEqual(asked, []);
+  // A window the chain owns: no ask.
+  const own = [...wins, { hwnd: 4, pid: 50, title: 'cmd', exe: 'cmd.exe' }];
+  assert.strictEqual(f.pickWindow(chain, own, ['wewe'], { ask }).window.hwnd, 4);
+  assert.deepStrictEqual(asked, []);
+  // No answer: the title match stands, and with no title either, nothing is chosen.
+  const none = () => new Map();
+  assert.strictEqual(f.pickWindow(chain, wins, ['wewe'], { ask: none }).via, 'title');
+  assert.strictEqual(f.pickWindow(chain, wins, ['nothing'], { ask: none }).window, null);
+  // No chain: no pid to ask about, so chooseWindow's answer stands.
+  assert.strictEqual(f.pickWindow([], wins, ['wewe'], { ask }).via, 'title');
+  assert.deepStrictEqual(asked, []);
+});
+
+test('attachedConsoles answers with an empty map for no pids and for a pid with no console', () => {
+  assert.strictEqual(f.attachedConsoles([]).size, 0);
+  assert.strictEqual(f.attachedConsoles([999999999]).size, 0);
+});
+
 test('a title match needs whole words, and an exact title beats a partial one', () => {
   assert.strictEqual(f.titleScore('✳ shopster', ['shop']), 0);
   assert.ok(f.titleScore('✳ shop', ['shop']) > f.titleScore('✳ shop tray', ['shop']));

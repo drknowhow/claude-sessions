@@ -187,7 +187,7 @@ function updateRow(p, r) {
   p.copy.hidden = !r.resume;
   if (!p.copiedTimer) p.copy.title = `Copy ${r.resume}`;
   p.folder.hidden = !r.cwd;
-  p.expand.hidden = r.dimmed; // an ended session has no window to show
+  p.expand.hidden = r.dimmed || r.background; // ended and background sessions have no window to show
 
   p.chip.hidden = r.dimmed;
   p.chip.classList.toggle('muted', r.muted);

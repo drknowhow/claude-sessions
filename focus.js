@@ -3,6 +3,9 @@
 // tested; the win32 layer under them loads koffi lazily, so a machine where it
 // fails to load still runs the tray, without focus.
 'use strict';
+const path = require('path');
+const { execFileSync } = require('child_process');
+const { isBackground } = require('./state');
 
 // Processes that host many unrelated programs. The walk up from claude stops
 // before them, because their windows are not the session's terminal.
@@ -11,7 +14,8 @@ const STOP_AT = new Set([
   'services.exe', 'wininit.exe', 'winlogon.exe', 'userinit.exe', 'system',
 ]);
 // Terminals whose window the walk may miss: Windows Terminal started as the
-// default terminal does not parent the shell, so its windows are matched by title.
+// default terminal does not parent the shell, so when no console lookup names
+// its window, its windows are matched by title.
 const TERMINAL_HOSTS = new Set(['windowsterminal.exe']);
 const MAX_DEPTH = 16;
 const TICKS_PER_SECOND = 10000000n; // FILETIME counts 100 ns ticks
@@ -69,12 +73,13 @@ function titleScore(title, hints) {
 
 /**
  * The window to bring forward. `windows` are visible top-level windows in
- * Z-order, topmost first: { hwnd, pid, title, exe }. The nearest ancestor that
- * owns a window wins; among its windows the best title match, then the
- * topmost. With no owner in the chain, a terminal-host window whose title
- * matches a hint, unless `byTitle` is false.
+ * Z-order, topmost first: { hwnd, pid, title, exe }. `consoles` maps a pid to
+ * the window that shows its console (see consoleHosts). Walking the chain
+ * nearest first, a process's own windows win (the best title match, then the
+ * topmost), then the window showing its console. With neither in the chain, a
+ * terminal-host window whose title matches a hint, unless `byTitle` is false.
  */
-function chooseWindow(chain, windows, hints, { byTitle = true } = {}) {
+function chooseWindow(chain, windows, hints, { byTitle = true, consoles = new Map() } = {}) {
   const best = (list) => {
     let pick = null;
     let pickScore = -1;
@@ -87,12 +92,26 @@ function chooseWindow(chain, windows, hints, { byTitle = true } = {}) {
   for (const proc of chain) {
     const owned = windows.filter((w) => w.pid === proc.pid);
     if (owned.length) return { window: best(owned).pick, via: proc.name };
+    const host = consoles.has(proc.pid) ? windows.find((w) => w.hwnd === consoles.get(proc.pid)) : null;
+    if (host) return { window: host, via: `${proc.name} console` };
   }
   if (!byTitle) return { window: null, via: null };
   const hosted = windows.filter((w) => TERMINAL_HOSTS.has(String(w.exe).toLowerCase()));
   const { pick, score } = best(hosted);
   if (pick && score > 0) return { window: pick, via: 'title' };
   return { window: null, via: null };
+}
+
+/**
+ * chooseWindow, then, when that found no window or only a title match, again
+ * with the console windows `ask(pids)` names for the chain's processes. `ask`
+ * is slower (attachedConsoles starts a process), so it runs only then.
+ */
+function pickWindow(chain, windows, hints, { byTitle = true, consoles = new Map(), ask = () => new Map() } = {}) {
+  const pick = chooseWindow(chain, windows, hints, { byTitle, consoles });
+  if ((pick.window && pick.via !== 'title') || !chain.length) return pick;
+  const asked = chooseWindow(chain, windows, hints, { byTitle: false, consoles: ask(chain.map((p) => p.pid)) });
+  return asked.window ? asked : pick;
 }
 
 /** True when the process created at `createdTicks` is the one the registry saw start. */
@@ -135,6 +154,7 @@ function win32() {
       IsWindowVisible: u32.func('bool __stdcall IsWindowVisible(intptr_t h)'),
       GetWindow: u32.func('intptr_t __stdcall GetWindow(intptr_t h, uint32_t cmd)'),
       GetWindowTextW: u32.func('int __stdcall GetWindowTextW(intptr_t h, _Out_ uint8_t *buf, int n)'),
+      GetClassNameW: u32.func('int __stdcall GetClassNameW(intptr_t h, _Out_ uint8_t *buf, int n)'),
       GetWindowThreadProcessId: u32.func('uint32_t __stdcall GetWindowThreadProcessId(intptr_t h, _Out_ uint32_t *pid)'),
       GetForegroundWindow: u32.func('intptr_t __stdcall GetForegroundWindow()'),
       IsIconic: u32.func('bool __stdcall IsIconic(intptr_t h)'),
@@ -208,6 +228,52 @@ function windows(procs) {
   return out;
 }
 
+/**
+ * Map pid -> the window that shows that process's console, read from the
+ * hidden PseudoConsoleWindow Windows Terminal gives each tab. Windows reports
+ * it under the tab's shell, and its owner is the terminal window the tab is
+ * in, whichever tab is active. That also covers a shell Explorer started,
+ * where Windows Terminal took the console over as the default terminal and is
+ * not the shell's parent. Once in testing such a window was reported under
+ * OpenConsole.exe instead; attachedConsoles covers that case.
+ */
+function consoleHosts() {
+  const w = win32();
+  const out = new Map();
+  if (!w) return out;
+  const buf = Buffer.alloc(128);
+  w.EnumWindows((hwnd) => {
+    const owner = w.GetWindow(hwnd, 4); // GW_OWNER
+    if (!owner) return true;
+    const n = w.GetClassNameW(hwnd, buf, 64);
+    if (n <= 0 || buf.toString('utf16le', 0, n * 2) !== 'PseudoConsoleWindow') return true;
+    const pid = [0];
+    w.GetWindowThreadProcessId(hwnd, pid);
+    out.set(pid[0], owner);
+    return true;
+  }, 0);
+  return out;
+}
+
+/**
+ * Map pid -> the window that shows that process's console, asked of Windows
+ * by console-owner.js in a child process. Empty when it cannot answer, e.g.
+ * off Windows or for a process with no console.
+ */
+function attachedConsoles(pids) {
+  const out = new Map();
+  if (!pids.length) return out;
+  try {
+    const text = execFileSync(process.execPath, [path.join(__dirname, 'console-owner.js'), ...pids.map(String)], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, windowsHide: true, timeout: 3000, encoding: 'utf8',
+    });
+    for (const [pid, hwnd] of Object.entries(JSON.parse(text || '{}'))) out.set(Number(pid), Number(hwnd));
+  } catch {
+    // No answer: the title match, if any, stands.
+  }
+  return out;
+}
+
 /** Restores and raises the window; taps Alt once if Windows refuses the switch. */
 function focusWindow(hwnd) {
   const w = win32();
@@ -234,13 +300,15 @@ function focusSession(row, alias) {
   const chain = ancestry(row.pid, procs, createdAt);
   // Desktop-app and SDK sessions have no terminal, so a title match would be a guess.
   const byTitle = !row.entrypoint || row.entrypoint === 'cli';
-  const { window, via } = chooseWindow(chain, windows(procs), hintsFor(row, alias), { byTitle });
+  // A background run's console, if any, is hidden, so asking for it only costs time.
+  const ask = isBackground(row) ? undefined : attachedConsoles;
+  const { window, via } = pickWindow(chain, windows(procs), hintsFor(row, alias), { byTitle, consoles: consoleHosts(), ask });
   if (!window) return { ok: false, reason: `no window (${chain.map((p) => p.name).join(' < ') || 'no chain'})` };
   const ok = focusWindow(window.hwnd);
   return { ok, reason: ok ? undefined : 'Windows kept the foreground', via, title: window.title };
 }
 
 module.exports = {
-  ancestry, chooseWindow, hintsFor, titleScore, sameStart, norm,
-  nativeStatus, snapshot, createdAt, windows, focusWindow, focusSession,
+  ancestry, chooseWindow, pickWindow, hintsFor, titleScore, sameStart, norm,
+  nativeStatus, snapshot, createdAt, windows, consoleHosts, attachedConsoles, focusWindow, focusSession,
 };

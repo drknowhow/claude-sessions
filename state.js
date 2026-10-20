@@ -325,6 +325,11 @@ function isVisible(row, showAll) {
   return !row.hidden && (showAll || !row.entrypoint || row.entrypoint === 'cli');
 }
 
+/** Remote Control bridges and SDK runs (`sdk-cli`, `sdk-py`) run with no window to show. */
+function isBackground(row) {
+  return String(row.entrypoint || '').startsWith('sdk-');
+}
+
 /** Visible live rows, most urgent first, then most recently active. */
 function visibleRows(sessions, showAll) {
   return Object.values(sessions)
@@ -409,6 +414,7 @@ module.exports = {
   summarize,
   visibleRows,
   isVisible,
+  isBackground,
   rowLabel,
   stateLine,
   ago,

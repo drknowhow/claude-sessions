@@ -383,7 +383,7 @@ function wirePopup() {
     const r = focusRow(row, 'popup');
     // The popup would cover the window it just brought forward.
     if (r.ok) popup.dismiss();
-    return { ok: r.ok, notice: r.ok ? '' : focusNotice(r.reason) };
+    return { ok: r.ok, notice: r.ok ? '' : focusNotice(r.reason, row) };
   });
   popup.on('popup:mute', (key) => {
     const row = rowFor(key);
