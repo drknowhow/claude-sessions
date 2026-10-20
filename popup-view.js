@@ -69,4 +69,13 @@ function focusNotice(reason, row) {
   return "Couldn't show its window";
 }
 
-module.exports = { ENDED_SHOWN, popupModel, focusNotice };
+/** What the popup says for a moment after a preview, from player.js's result code. */
+function soundNotice(code) {
+  if (code === 'output') return "No sound: the audio output didn't start";
+  if (code === 'no-answer') return "No sound: the sound player didn't answer";
+  if (code === 'file') return "Couldn't play that sound file";
+  if (code === 'volume') return 'Volume is at 0%';
+  return "Couldn't play that sound";
+}
+
+module.exports = { ENDED_SHOWN, popupModel, focusNotice, soundNotice };

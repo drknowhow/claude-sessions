@@ -20,7 +20,7 @@ contextBridge.exposeInMainWorld('popup', {
   openFolder: (key) => ipcRenderer.send('popup:open-folder', key),
   setAlias: (key, text) => ipcRenderer.send('popup:alias', key, text),
   setSound: (key, id, scope) => ipcRenderer.send('popup:sound', key, id, scope),
-  preview: (id) => ipcRenderer.send('popup:preview', id),
+  preview: (id) => ipcRenderer.invoke('popup:preview', id), // -> { ok, notice }
   setVolume: (pct) => ipcRenderer.send('popup:volume', pct),
   setShowAll: (on) => ipcRenderer.send('popup:show-all', on),
   setOpenAtLogin: (on) => ipcRenderer.send('popup:login', on),

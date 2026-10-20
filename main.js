@@ -19,7 +19,7 @@ const { labelsFor } = require('./labels');
 const { iconSpec, iconPngs, drawIcon, encodePng, COLORS } = require('./tray-icon');
 const { createPlayer } = require('./player');
 const { createPopup } = require('./popup');
-const { popupModel, focusNotice } = require('./popup-view');
+const { popupModel, focusNotice, soundNotice } = require('./popup-view');
 
 // Alerts play from a hidden window that nobody clicks, so it may not wait for a gesture.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -415,8 +415,11 @@ function wirePopup() {
     const row = rowFor(key);
     if (row && ['session', 'project', 'clear'].includes(scope)) setSound(row, id, scope);
   });
-  popup.on('popup:preview', (id) => {
-    if (player && sounds.findSound(catalog, id)) player.preview(id, config.volume);
+  popup.handle('popup:preview', async (id) => {
+    if (!player || !sounds.findSound(catalog, id)) return { ok: false, notice: soundNotice('missing') };
+    const res = await player.preview(id, config.volume);
+    if (!res.ok) return { ok: false, notice: soundNotice(res.code) };
+    return { ok: true, notice: config.volume > 0 ? '' : soundNotice('volume') };
   });
   popup.on('popup:volume', (pct) => {
     const n = Number(pct);

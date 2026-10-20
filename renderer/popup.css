@@ -407,6 +407,7 @@ code {
 
 .picker-note:empty { display: none; }
 .picker-note .text-btn { padding: 1px 4px; margin-left: 2px; }
+.sound-notice { color: var(--fg); }
 
 .sounds {
   max-height: 360px;

@@ -107,7 +107,7 @@ function renderHeader() {
 
 // ---------------------------------------------------------------- rows
 
-const NOTICE_MS = 2600; // how long a row says its window did not come forward
+const NOTICE_MS = 2600; // how long a row or the picker shows a notice
 const COPIED_MS = 1200; // how long the copy button shows its check
 const notices = new Map(); // key -> { text }, shown in place of the state line
 
@@ -160,7 +160,7 @@ function makeRow(key) {
   play.append(playIcon());
   play.addEventListener('click', () => {
     const r = rowByKey(key);
-    if (r) api.preview(r.sound.id);
+    if (r) preview(r.sound.id, (text) => flashRow(key, text));
   });
   chip.append(mute, chipLabel, play);
 
@@ -205,14 +205,9 @@ function refreshRow(key) {
   if (p && r) updateRow(p, r);
 }
 
-/** Brings the session's terminal forward. Main hides the popup when it worked. */
-async function showWindow(key) {
-  const r = rowByKey(key);
-  if (!r || r.dimmed || renaming) return;
-  let res = null;
-  try { res = await api.activateRow(key); } catch { return; }
-  if (!res || res.ok) return;
-  const entry = { text: res.notice };
+/** Shows text in place of a row's state line for NOTICE_MS. */
+function flashRow(key, text) {
+  const entry = { text };
   notices.set(key, entry);
   refreshRow(key);
   setTimeout(() => {
@@ -220,6 +215,23 @@ async function showWindow(key) {
     notices.delete(key);
     refreshRow(key);
   }, NOTICE_MS);
+}
+
+/** Brings the session's terminal forward. Main hides the popup when it worked. */
+async function showWindow(key) {
+  const r = rowByKey(key);
+  if (!r || r.dimmed || renaming) return;
+  let res = null;
+  try { res = await api.activateRow(key); } catch { return; }
+  if (!res || res.ok) return;
+  flashRow(key, res.notice);
+}
+
+/** Plays a sound and passes on what main says about it: no sound, or volume at 0%. */
+async function preview(id, show) {
+  let res = null;
+  try { res = await api.preview(id); } catch { return; }
+  if (res && res.notice) show(res.notice);
 }
 
 async function copyResume(key) {
@@ -346,7 +358,7 @@ function renderPicker() {
       const play = el('button', 'sound-play');
       play.title = `Play ${s.label}`;
       play.append(playIcon());
-      play.addEventListener('click', () => api.preview(s.id));
+      play.addEventListener('click', () => preview(s.id, flashPicker));
       const pick = el('button', 'sound-pick', s.label);
       pick.title = pickerScope === 'project' ? `Use ${s.label} for all ${r.project} sessions` : `Use ${s.label} for this session`;
       pick.addEventListener('click', () => choose(s.id));
@@ -362,8 +374,22 @@ function choose(id) {
   const r = rowByKey(pickerKey);
   if (!r) return;
   api.setSound(pickerKey, id, pickerScope);
-  api.preview(id);
+  preview(id, flashPicker);
   for (const n of $('sounds').querySelectorAll('.sound')) n.classList.toggle('current', n.dataset.id === id);
+}
+
+let pickerNotice = null; // the latest flashPicker call; an older timer leaves a newer notice alone
+
+/** Shows text above the sound list for NOTICE_MS. */
+function flashPicker(text) {
+  const entry = {};
+  pickerNotice = entry;
+  setText($('sound-notice'), text);
+  setTimeout(() => {
+    if (pickerNotice !== entry) return;
+    pickerNotice = null;
+    setText($('sound-notice'), '');
+  }, NOTICE_MS);
 }
 
 $('scope').addEventListener('click', (e) => {
@@ -422,6 +448,8 @@ api.onRename((key) => startRename(key));
 api.onReset(() => {
   if (renaming) endRename(false);
   notices.clear();
+  pickerNotice = null;
+  setText($('sound-notice'), '');
   pickerKey = null;
   show('list');
   rowsEl.scrollTop = 0;

@@ -146,6 +146,26 @@ Toasts are silent, so Windows adds no sound of its own. Muting a session or
 turning on Do not disturb stops both its sound and its toast; the icon and
 the popup still update.
 
+### When there is no sound
+
+Sounds play in a hidden window that keeps one audio output open. Before each
+sound the tray checks that the output is running and that its clock moves.
+If it is not, the tray opens a new output and tries once more. If that also
+fails, the alert is silent and ▶ in the popup shows the reason for a few
+seconds. A sound file that fails to load plays the built-in marimba instead.
+
+`%LOCALAPPDATA%\ClaudeSessions\tray.log` records what happened:
+
+- a `sound output` line each time the tray opens an output, with its state.
+  `running` means the output started; `stuck suspended` means it never did.
+- a `sound failed` line for each sound that did not play, with the reason.
+
+The tray cannot see a mute set in Windows. If the log shows `running`, has
+no `sound failed` line, and you still hear nothing, open the Volume Mixer
+(right-click the speaker icon on the taskbar). Check that Claude Sessions is
+not muted or turned down there, and that it plays to the device you listen
+on.
+
 ## How it works
 
 - Hooks in `~/.claude/settings.json` run `reporter/report.js` on
@@ -258,9 +278,9 @@ The promo videos are a [Remotion](https://www.remotion.dev/) project in
 
 `npm test` runs the unit tests for the reducer, installer, registry reader,
 server, config store, icon drawing, menu and toast text, the hover timing,
-the popup's row model, the sound catalog and assignment, the window choice
-for focus, and the liveness check. CI runs them on Windows for every push
-and pull request.
+the popup's row model, the sound catalog and assignment, the sound player
+and its audio-output checks, the window choice for focus, and the liveness
+check. CI runs them on Windows for every push and pull request.
 
 `npx electron scripts/check-synths.js` renders each built-in sound offline
 and fails if one is silent, clips, or runs well past the length it reports.

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { popupModel, ENDED_SHOWN, focusNotice } = require('../popup-view');
+const { popupModel, ENDED_SHOWN, focusNotice, soundNotice } = require('../popup-view');
 const { BUILT_IN } = require('../sounds');
 
 const NOW = Date.UTC(2026, 9, 19, 14, 0, 0);
@@ -91,6 +91,16 @@ test('each reason focus.js gives for a window that stayed put has a plain notice
   assert.strictEqual(focusNotice('no window (claude.exe < node.exe)', row(1, 'idle', { entrypoint: 'sdk-cli' })), 'It runs in the background, with no window');
   assert.strictEqual(focusNotice('no window (no chain)', row(1, 'idle', { entrypoint: 'sdk-py' })), 'It runs in the background, with no window');
   assert.strictEqual(focusNotice('no window (no chain)', row(1, 'idle')), "Couldn't find its window");
+});
+
+test('each result code player.js gives for a silent preview has a plain notice', () => {
+  assert.strictEqual(soundNotice('output'), "No sound: the audio output didn't start");
+  assert.strictEqual(soundNotice('no-answer'), "No sound: the sound player didn't answer");
+  assert.strictEqual(soundNotice('file'), "Couldn't play that sound file");
+  assert.strictEqual(soundNotice('volume'), 'Volume is at 0%');
+  assert.strictEqual(soundNotice('missing'), "Couldn't play that sound");
+  assert.strictEqual(soundNotice('other'), "Couldn't play that sound");
+  assert.strictEqual(soundNotice(undefined), "Couldn't play that sound");
 });
 
 test('background rows are flagged so the popup hides their expand button', () => {
