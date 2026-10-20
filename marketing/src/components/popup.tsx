@@ -1,4 +1,4 @@
-// The tray popup, rebuilt from renderer/popup.css and popup.html (dark theme).
+// The tray popup, rebuilt from renderer/popup.css, popup.html and popup.js (dark theme).
 // Every size here is in the app's CSS pixels; the wrapper applies `zoom`.
 import React from 'react';
 import {C, F, SessionState, STATE_COLOR} from '../theme';
@@ -27,21 +27,39 @@ const SOUNDS = ['Marimba', 'Bell', 'Wood', 'Blip', 'Chirp', 'Pluck', 'Glass', 'L
 const BORDER = 1;
 const HEAD_H = 10 + 9 + 13 * 1.35 + 12 * 1.35 + 1; // padding + title + counts + border
 const ROWS_PAD = 4;
-const ROW_H = 7 + 7 + 12 * 1.35 + 11.5 * 1.35 + 1;
+// A row is two lines: the title with its tools, then the state line with the sound chip.
+// The 22px tools overhang the title line by 3px a side, so the title (16.2) sets its height;
+// the 20px chip overhangs by 2px a side, so its 16px beats the 11.5px state line.
+const ROW_PAD_Y = 7;
+const TOP_H = 12 * 1.35;
+const BOTTOM_GAP = 2;
+const BOTTOM_H = 16;
+const ROW_H = ROW_PAD_Y * 2 + TOP_H + BOTTOM_GAP + BOTTOM_H;
 export const CARD_W = 320;
+/** Right edge of a row's content: card border, list padding and row padding. */
+const ROW_RIGHT = CARD_W - (BORDER + ROWS_PAD + 4);
 
-export const listHeight = (rows: number) => BORDER * 2 + HEAD_H + ROWS_PAD * 2 + rows * ROW_H;
+const hasChip = (r: RowData) => !!r.sound && r.state !== 'ended';
+// An ended row has no chip, so its bottom line is just the state line.
+const rowHeight = (r: RowData) => (hasChip(r) ? ROW_H : ROW_H - BOTTOM_H + 11.5 * 1.35);
+
+export const listHeight = (rows: RowData[]) => BORDER * 2 + HEAD_H + ROWS_PAD * 2 + rows.reduce((h, r) => h + rowHeight(r), 0);
 export const PICKER_H = BORDER * 2 + HEAD_H + (8 + 2 * 2 + 24) + (4 + (8 + 3 + 11 * 1.35) + SOUNDS.length * 28 + 6);
 
-/** Centre of row i's text, from the card's top-left corner. */
-export const rowCenter = (i: number) => ({x: 120, y: BORDER + HEAD_H + ROWS_PAD + i * ROW_H + ROW_H / 2});
+// Ended rows sort under the live ones, so every row above a live row is full height.
+const rowTop = (i: number) => BORDER + HEAD_H + ROWS_PAD + i * ROW_H;
+const topLineY = (i: number) => rowTop(i) + ROW_PAD_Y + TOP_H / 2;
+const bottomLineY = (i: number) => rowTop(i) + ROW_PAD_Y + TOP_H + BOTTOM_GAP + BOTTOM_H / 2;
+
+/** Centre of one of row i's title-line buttons (22px each, 1px apart, right-aligned). */
+export const toolCenter = (i: number, tool: 'copy' | 'folder' | 'expand' | 'more') => {
+  const fromRight = {more: 0, expand: 1, folder: 2, copy: 3}[tool];
+  return {x: ROW_RIGHT - 11 - fromRight * 23, y: topLineY(i)};
+};
 /** Centre of row i's play button, from the card's top-left corner. */
-export const chipPlayCenter = (i: number) => ({x: CARD_W - (BORDER + ROWS_PAD + 4 + 22 + 9 + 11), y: rowCenter(i).y});
+export const chipPlayCenter = (i: number) => ({x: ROW_RIGHT - 11, y: bottomLineY(i)});
 /** Roughly the centre of row i's chip label (the sound name). */
-export const chipLabelCenter = (i: number, labelW = 58) => ({
-  x: CARD_W - (BORDER + ROWS_PAD + 4 + 22 + 9 + 22 + labelW / 2),
-  y: rowCenter(i).y,
-});
+export const chipLabelCenter = (i: number, labelW = 42) => ({x: ROW_RIGHT - 22 - 4 - labelW / 2, y: bottomLineY(i)});
 export const backCenter = {x: BORDER + 6 + 13, y: BORDER + 10 + 16.5};
 
 // ------------------------------------------------------------ icons
@@ -91,20 +109,20 @@ const CheckIcon: React.FC = () => (
   </svg>
 );
 
-const MoreDots: React.FC = () => (
-  <svg viewBox="0 0 22 24" style={{width: 22, height: 24, display: 'block'}}>
-    {[6, 11, 16].map((x) => (
-      <circle key={x} cx={x} cy={12.5} r={1.15} fill={C.popFaint} />
-    ))}
-  </svg>
-);
+// The row's stroke icons, on the app's 16-unit grid (renderer/popup.js).
+const SPEAKER = 'M2 6h2.5L8 3v10L4.5 10H2z';
+const ROW_ICON = {
+  copy: 'M4.5 6.5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1zM2.5 10.5v-7a1 1 0 0 1 1-1h7',
+  folder: 'M2 4.5a1 1 0 0 1 1-1h3.2l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z',
+  expand: 'M10 2.5h3.5V6M13.5 2.5L9.5 6.5M6 13.5H2.5V10M2.5 13.5l4-4',
+  more: 'M3.5 8h.01M8 8h.01M12.5 8h.01',
+  soundOn: `${SPEAKER}M10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6.3 6.3 0 0 1 0 9`,
+  soundOff: `${SPEAKER}M10.5 6l4 4M14.5 6l-4 4`,
+};
 
-const MuteIcon: React.FC = () => (
-  <svg
-    viewBox="0 0 12 12"
-    style={{width: 11, height: 11, fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', flex: 'none', display: 'block'}}
-  >
-    <path d="M1.5 4.6h2l3-2.4v7.6l-3-2.4h-2zM8.4 4.6l2.8 2.8M11.2 4.6L8.4 7.4" />
+const RowIcon: React.FC<{d: string; size: number; weight: number}> = ({d, size, weight}) => (
+  <svg viewBox="0 0 16 16" style={{...stroke, width: size, height: size, strokeWidth: weight}}>
+    <path d={d} />
   </svg>
 );
 
@@ -138,21 +156,55 @@ type RowFx = {
   ring: number; // 0..1 chip ring expansion progress (0 = none)
   playPress: number; // 0..1
   labelHover: number; // 0..1
+  reveal: number; // 0..1 copy and folder buttons; the app shows them while the row is hovered
+  expandHover: number; // 0..1
+  expandPress: number; // 0..1
 };
+
+/** Hover and press fill for a button, the app's --hover and --press. */
+const fill = (hover: number, press = 0) =>
+  press > 0 ? `rgba(255,255,255,${0.11 * press + 0.065 * (1 - press)})` : hover > 0 ? `rgba(255,255,255,${0.065 * hover})` : undefined;
+
+const Tool: React.FC<{d: string; color: string; hover?: number; press?: number; opacity?: number; weight?: number}> = ({
+  d,
+  color,
+  hover = 0,
+  press = 0,
+  opacity = 1,
+  weight = 1.5,
+}) => (
+  <span
+    style={{
+      flex: 'none',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: 22,
+      height: 22,
+      borderRadius: 5,
+      color: hover || press ? mixHex(color, C.popFg, Math.max(hover, press)) : color,
+      background: fill(hover, press),
+      opacity,
+    }}
+  >
+    <RowIcon d={d} size={14} weight={weight} />
+  </span>
+);
 
 const Row: React.FC<{r: RowData; fx: RowFx; frame: number; period: number}> = ({r, fx, frame, period}) => {
   const dimmed = r.state === 'ended';
-  const bg = fx.press > 0 ? `rgba(255,255,255,${0.11 * fx.press + 0.065 * (1 - fx.press)})` : `rgba(255,255,255,${0.065 * fx.hover})`;
+  const bg = fill(fx.hover, fx.press);
   const litBg = `rgba(110,168,254,${0.2 * fx.lit})`;
   const chipColor = fx.lit > 0.01 ? mixHex(C.popMuted, C.accentDark, fx.lit) : C.popMuted;
   const ringAlpha = fx.ring > 0 && fx.ring < 1 ? 0.55 * (1 - fx.ring) : 0;
+  const line: React.CSSProperties = {display: 'flex', alignItems: 'center', gap: 6};
   return (
     <div
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: 9,
-        padding: '7px 4px 7px 8px',
+        padding: `${ROW_PAD_Y}px 4px ${ROW_PAD_Y}px 8px`,
         borderRadius: 7,
         background: bg,
         opacity: (dimmed ? 0.55 : 1) * fx.appear,
@@ -161,64 +213,82 @@ const Row: React.FC<{r: RowData; fx: RowFx; frame: number; period: number}> = ({
     >
       <Dot state={r.state} frame={frame} period={period} />
       <div style={{flex: 1, minWidth: 0}}>
-        <div style={{...ellipsis, color: C.popFg}}>
-          <span style={{fontWeight: 600}}>{r.where}</span>
-          {r.name ? <span style={{color: C.popMuted}}>{` · ${r.name}`}</span> : null}
+        <div style={line}>
+          <div style={{...ellipsis, flex: 1, minWidth: 0, color: C.popFg}}>
+            <span style={{fontWeight: 600}}>{r.where}</span>
+            {r.name ? <span style={{color: C.popMuted}}>{` · ${r.name}`}</span> : null}
+          </div>
+          <div style={{flex: 'none', display: 'flex', alignItems: 'center', gap: 1, margin: '-3px 0'}}>
+            <Tool d={ROW_ICON.copy} color={C.popFaint} opacity={fx.reveal} />
+            <Tool d={ROW_ICON.folder} color={C.popFaint} opacity={fx.reveal} />
+            {dimmed ? null : <Tool d={ROW_ICON.expand} color={C.popMuted} hover={fx.expandHover} press={fx.expandPress} />}
+            <Tool d={ROW_ICON.more} color={C.popFaint} weight={2.2} />
+          </div>
         </div>
-        <div style={{...ellipsis, color: lineColor(r.state), fontSize: 11.5, marginTop: 1}}>{r.line}</div>
+        <div style={{...line, marginTop: BOTTOM_GAP}}>
+          <div style={{...ellipsis, flex: 1, minWidth: 0, color: lineColor(r.state), fontSize: 11.5}}>{r.line}</div>
+          {hasChip(r) ? (
+            <div
+              style={{
+                flex: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                height: 20,
+                margin: '-2px 0',
+                borderRadius: 10,
+                background: fx.lit > 0.01 ? litBg : C.popChip,
+                color: chipColor,
+                fontSize: 11,
+                maxWidth: 128,
+                boxShadow: ringAlpha ? `0 0 0 ${2 + fx.ring * 9}px rgba(110,168,254,${ringAlpha})` : undefined,
+              }}
+            >
+              <span
+                style={{
+                  flex: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 22,
+                  height: '100%',
+                  paddingLeft: 2,
+                  boxSizing: 'border-box',
+                  borderRadius: '10px 0 0 10px',
+                }}
+              >
+                <RowIcon d={r.muted ? ROW_ICON.soundOff : ROW_ICON.soundOn} size={12} weight={1.4} />
+              </span>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  height: '100%',
+                  padding: '0 4px 0 1px',
+                  minWidth: 0,
+                  background: fill(fx.labelHover),
+                  color: fx.labelHover ? C.popFg : undefined,
+                }}
+              >
+                <span style={{...ellipsis, textDecoration: r.muted ? 'line-through' : undefined}}>{r.sound}</span>
+              </span>
+              <span
+                style={{
+                  flex: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 22,
+                  height: '100%',
+                  borderRadius: '0 10px 10px 0',
+                  background: fx.playPress ? `rgba(255,255,255,${0.11 * fx.playPress})` : undefined,
+                }}
+              >
+                <PlayIcon />
+              </span>
+            </div>
+          ) : null}
+        </div>
       </div>
-      {r.sound && !dimmed ? (
-        <div
-          style={{
-            flex: 'none',
-            display: 'inline-flex',
-            alignItems: 'center',
-            height: 22,
-            borderRadius: 11,
-            background: fx.lit > 0.01 ? litBg : C.popChip,
-            color: chipColor,
-            fontSize: 11,
-            maxWidth: 116,
-            boxShadow: ringAlpha ? `0 0 0 ${2 + fx.ring * 9}px rgba(110,168,254,${ringAlpha})` : undefined,
-          }}
-        >
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              height: '100%',
-              padding: '0 4px 0 9px',
-              borderRadius: '11px 0 0 11px',
-              minWidth: 0,
-              background: fx.labelHover ? `rgba(255,255,255,${0.065 * fx.labelHover})` : undefined,
-              color: fx.labelHover ? C.popFg : undefined,
-            }}
-          >
-            {r.muted ? <MuteIcon /> : null}
-            <span style={{...ellipsis, textDecoration: r.muted ? 'line-through' : undefined}}>{r.sound}</span>
-          </span>
-          <span
-            style={{
-              flex: 'none',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 22,
-              height: '100%',
-              borderRadius: '0 11px 11px 0',
-              background: fx.playPress ? `rgba(255,255,255,${0.11 * fx.playPress})` : undefined,
-            }}
-          >
-            <PlayIcon />
-          </span>
-        </div>
-      ) : (
-        <span style={{flex: 'none', width: 0}} />
-      )}
-      <span style={{flex: 'none', width: 22, height: 24, borderRadius: 5}}>
-        <MoreDots />
-      </span>
     </div>
   );
 };
@@ -335,6 +405,9 @@ export const Popup: React.FC<PopupProps> = ({title, counts, top, rows, frame, pe
                         ring: e.ring ?? 0,
                         playPress: e.playPress ?? 0,
                         labelHover: e.labelHover ?? 0,
+                        reveal: e.reveal ?? Math.max(e.hover ?? 0, e.press ?? 0),
+                        expandHover: e.expandHover ?? 0,
+                        expandPress: e.expandPress ?? 0,
                       }}
                     />
                   );

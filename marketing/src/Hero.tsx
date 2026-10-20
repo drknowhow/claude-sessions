@@ -1,5 +1,6 @@
-// README GIF: the icon turns amber, the popup opens, a click on the needs-you row
-// brings its terminal forward, the prompt is answered and the icon goes back to blue.
+// README GIF: the icon turns amber, the popup opens, a click on the needs-you row's
+// expand button brings its terminal forward, the prompt is answered and the icon goes
+// back to blue.
 // Every animated value returns to its frame-0 state by HERO_DUR, so the GIF loops.
 import React from 'react';
 import {AbsoluteFill, Easing, useCurrentFrame} from 'remotion';
@@ -7,7 +8,7 @@ import {C} from './theme';
 import {H, HERO_DUR} from './timeline';
 import {Key, path2, pop, ramp, window01} from './lib/anim';
 import {Cursor, Taskbar, TrayIconState, Wallpaper, tray} from './components/desktop';
-import {CARD_W, Popup, listHeight, rowCenter} from './components/popup';
+import {CARD_W, Popup, listHeight, toolCenter} from './components/popup';
 import {Terminal, TLine, docsLines, inventoryLines, mobileWorkingLines, shopLines} from './components/terminal';
 import {HERO_HEAD, HERO_ROWS} from './data';
 
@@ -18,8 +19,8 @@ const PERIOD = 45; // divides HERO_DUR, so pulses loop cleanly
 
 const G = tray(W, HH);
 const POP_LEFT = W - G.popupRight - CARD_W * ZOOM;
-const LIST_TOP = HH - G.popupBottom - listHeight(HERO_ROWS.length) * ZOOM;
-const ROW0 = {x: POP_LEFT + (rowCenter(0).x - 20) * ZOOM, y: LIST_TOP + rowCenter(0).y * ZOOM};
+const LIST_TOP = HH - G.popupBottom - listHeight(HERO_ROWS) * ZOOM;
+const EXPAND0 = {x: POP_LEFT + toolCenter(0, 'expand').x * ZOOM, y: LIST_TOP + toolCenter(0, 'expand').y * ZOOM};
 const ICON = {x: G.icon.x + 2, y: G.icon.y + 2};
 // Inside the docs-site window but clear of the shop window, so the closing click
 // refocuses docs-site and the last frame matches the first.
@@ -51,8 +52,8 @@ const CURSOR_KEYS: Key[] = [
   {f: H.cursorGo, ...HOME},
   {f: H.cursorAtIcon, ...ICON},
   {f: 100, ...ICON},
-  {f: 122, ...ROW0},
-  {f: H.cursorBack, ...ROW0},
+  {f: 122, ...EXPAND0},
+  {f: H.cursorBack, ...EXPAND0},
   {f: H.cursorHome, ...HOME},
 ];
 
@@ -124,7 +125,8 @@ const HeroStage: React.FC<{f: number}> = ({f}) => {
             fx={(i) => ({
               appear: ramp(f, H.rowsIn + 4 * i, H.rowsIn + 10 + 4 * i, Easing.out(Easing.cubic)),
               hover: i === 0 ? window01(f, 120, 156, 4, 2) : 0,
-              press: i === 0 ? window01(f, H.rowClick - 3, H.rowClick + 4, 3, 4) : 0,
+              expandHover: i === 0 ? window01(f, 122, 156, 4, 2) : 0,
+              expandPress: i === 0 ? window01(f, H.rowClick - 3, H.rowClick + 4, 3, 4) : 0,
             })}
           />
         </div>

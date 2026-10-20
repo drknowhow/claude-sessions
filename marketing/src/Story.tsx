@@ -7,7 +7,7 @@ import {K, ROW_STEP, SCENES, TERM_STEP} from './timeline';
 import {Key, lerp, path2, pop, ramp, window01} from './lib/anim';
 import {Backdrop, Disclaimer, Lockup, Mark, Wordmark} from './components/brand';
 import {Cam, Cursor, StageFrame, Taskbar, Toast, TrayIconState, Wallpaper, camTransform, tray} from './components/desktop';
-import {CARD_W, PICKER_H, Popup, backCenter, chipLabelCenter, chipPlayCenter, listHeight, rowCenter} from './components/popup';
+import {CARD_W, PICKER_H, Popup, backCenter, chipLabelCenter, chipPlayCenter, listHeight, toolCenter} from './components/popup';
 import {ShopStage, Terminal, TLine, apiLines, docsLines, inventoryLines, mobileFailedLines, shopLines} from './components/terminal';
 import {CAPTIONS, PICKER, PROMO_HEAD, PROMO_ROWS, TAGLINE_END} from './data';
 
@@ -20,7 +20,7 @@ const PERIOD = 48; // working-dot pulse
 
 const G = tray(SW, SH);
 const POP_LEFT = SW - G.popupRight - CARD_W * ZOOM;
-const LIST_H = listHeight(PROMO_ROWS.length);
+const LIST_H = listHeight(PROMO_ROWS);
 const LIST_TOP = SH - G.popupBottom - LIST_H * ZOOM;
 const PICK_TOP = SH - G.popupBottom - PICKER_H * ZOOM;
 
@@ -29,7 +29,7 @@ const ICON = {x: G.icon.x + 2, y: G.icon.y + 2};
 const CHIP = K.chips.map((_, i) => inList(chipPlayCenter(i)));
 const LABEL0 = inList(chipLabelCenter(0));
 const BACK = {x: POP_LEFT + backCenter.x * ZOOM, y: PICK_TOP + backCenter.y * ZOOM};
-const ROW0 = {x: POP_LEFT + (rowCenter(0).x - 20) * ZOOM, y: inList(rowCenter(0)).y};
+const EXPAND0 = inList(toolCenter(0, 'expand'));
 
 // ------------------------------------------------------------ terminals
 
@@ -168,7 +168,7 @@ const MOVES: [number, number, number, number][] = [
   ...K.chips.map((c, i): [number, number, number, number] => [i === 0 ? 528 : K.chips[i - 1] + 5, c - 2, CHIP[i].x, CHIP[i].y]),
   [652, K.pickerClick - 2, LABEL0.x, LABEL0.y],
   [704, K.pickerBack - 4, BACK.x, BACK.y],
-  [752, K.rowHover - 2, ROW0.x, ROW0.y],
+  [752, K.rowHover - 2, EXPAND0.x, EXPAND0.y],
   [846, 880, 1010, 300],
 ];
 const CURSOR_KEYS: Key[] = (() => {
@@ -207,6 +207,8 @@ const PromoPopup: React.FC<{f: number}> = ({f}) => {
       ring: 0,
       playPress: 0,
       labelHover: 0,
+      expandHover: 0,
+      expandPress: 0,
     };
     if (i < K.chips.length) {
       const c = K.chips[i];
@@ -218,7 +220,8 @@ const PromoPopup: React.FC<{f: number}> = ({f}) => {
     if (i === 0) {
       e.labelHover = window01(f, K.pickerClick - 6, K.pickerClick + 4, 4, 3);
       e.hover = Math.max(e.hover, e.labelHover, window01(f, K.rowHover - 4, K.popupClose + 6, 4, 2));
-      e.press = window01(f, K.rowClick - 3, K.rowClick + 6, 3, 4);
+      e.expandHover = window01(f, K.rowHover - 2, K.popupClose + 6, 4, 2);
+      e.expandPress = window01(f, K.rowClick - 3, K.rowClick + 6, 3, 4);
     }
     return e;
   };
