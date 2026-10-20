@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.log
+.env
+
+# the promo video project's dependencies and intermediate renders
+marketing/node_modules/
+marketing/out/
+
+# local tooling and agent config, never published
+.c3/
+.claude/
+.mcp.json
+AGENTS.md
+CLAUDE.md

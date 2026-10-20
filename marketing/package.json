@@ -1,0 +1,29 @@
+{
+  "name": "claude-sessions-marketing",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Claude Sessions promo videos, README GIF and brand stills, built with Remotion",
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "node scripts/render.mjs",
+    "render:chimes": "node scripts/render.mjs chimes",
+    "render:main": "node scripts/render.mjs main audio",
+    "render:vertical": "node scripts/render.mjs vertical audio",
+    "render:hero": "node scripts/render.mjs hero",
+    "render:stills": "node scripts/render.mjs stills",
+    "filmstrip": "node scripts/render.mjs filmstrip",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.535",
+    "@remotion/google-fonts": "4.0.535",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "remotion": "4.0.535"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "typescript": "~5.9.3"
+  }
+}

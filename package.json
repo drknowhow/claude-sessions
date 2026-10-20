@@ -1,0 +1,58 @@
+{
+  "name": "claude-sessions-tray",
+  "productName": "Claude Sessions",
+  "version": "0.2.1",
+  "description": "Tray icon that tracks running Claude Code terminal sessions and alerts when one is done or needs you.",
+  "main": "main.js",
+  "author": "Dr. Know How",
+  "homepage": "https://drknowhow.github.io/claude-sessions/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/drknowhow/claude-sessions.git"
+  },
+  "bugs": "https://github.com/drknowhow/claude-sessions/issues",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"test/**/*.test.js\"",
+    "icon": "node scripts/make-icon.js",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "koffi": "3.3.3"
+  },
+  "build": {
+    "appId": "com.claude-sessions.tray",
+    "productName": "Claude Sessions",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "*.js",
+      "!.*",
+      "renderer/**",
+      "reporter/**",
+      "build/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/node_modules/koffi/**",
+      "**/node_modules/@koromix/**"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    }
+  }
+}
