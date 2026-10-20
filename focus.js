@@ -4,7 +4,7 @@
 // fails to load still runs the tray, without focus.
 'use strict';
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFile, execFileSync } = require('child_process');
 const { isBackground } = require('./state');
 
 // Processes that host many unrelated programs. The walk up from claude stops
@@ -17,6 +17,10 @@ const STOP_AT = new Set([
 // default terminal does not parent the shell, so when no console lookup names
 // its window, its windows are matched by title.
 const TERMINAL_HOSTS = new Set(['windowsterminal.exe']);
+// Processes in the chain that show a console rather than run in one, so
+// wt-tab.js cannot read a tab's title through them.
+const CONSOLE_HOSTS = new Set(['windowsterminal.exe', 'openconsole.exe', 'conhost.exe']);
+const TAB_TIMEOUT_MS = 4000; // wt-tab.js may wait 800 ms for a marked title
 const MAX_DEPTH = 16;
 const TICKS_PER_SECOND = 10000000n; // FILETIME counts 100 ns ticks
 
@@ -112,6 +116,25 @@ function pickWindow(chain, windows, hints, { byTitle = true, consoles = new Map(
   if ((pick.window && pick.via !== 'title') || !chain.length) return pick;
   const asked = chooseWindow(chain, windows, hints, { byTitle: false, consoles: ask(chain.map((p) => p.pid)) });
   return asked.window ? asked : pick;
+}
+
+/**
+ * What wt-tab.js needs to select the session's tab: { hwnd, pids }, with the
+ * chain's pids nearest first. Null when the window is not Windows Terminal's
+ * or no process in the chain runs in a console.
+ */
+function tabTarget(window, chain) {
+  if (!window || !TERMINAL_HOSTS.has(String(window.exe).toLowerCase())) return null;
+  const pids = chain.filter((p) => !CONSOLE_HOSTS.has(String(p.name).toLowerCase())).map((p) => p.pid);
+  return pids.length ? { hwnd: window.hwnd, pids } : null;
+}
+
+/** wt-tab.js's answer as words for the log. */
+function describeTab(tab) {
+  if (!tab) return '';
+  if (!tab.ok) return `tab not switched: ${tab.reason || 'no reason given'}`;
+  if (tab.how === 'none') return 'no tabs listed';
+  return `tab ${tab.index + 1} of ${tab.count} by ${tab.how}`;
 }
 
 /** True when the process created at `createdTicks` is the one the registry saw start. */
@@ -274,6 +297,33 @@ function attachedConsoles(pids) {
   return out;
 }
 
+/** Runs wt-tab.js for `target`; resolves to its JSON, or { ok: false, reason } when it fails. */
+function runTabHelper(target) {
+  return new Promise((resolve) => {
+    const args = [path.join(__dirname, 'wt-tab.js'), String(target.hwnd), ...target.pids.map(String)];
+    execFile(process.execPath, args, {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, windowsHide: true, timeout: TAB_TIMEOUT_MS, encoding: 'utf8',
+    }, (err, stdout) => {
+      try {
+        const out = JSON.parse(stdout || 'null');
+        if (out && typeof out === 'object') return resolve(out);
+      } catch {
+        // Falls through to the error below.
+      }
+      resolve({ ok: false, reason: err ? `helper failed: ${err.killed ? 'timed out' : err.message}` : 'helper gave no answer' });
+    });
+  });
+}
+
+// One wt-tab.js at a time: two runs marking the same console's title at once
+// could each read the other's mark as the title.
+let tabQueue = Promise.resolve();
+function switchTab(target) {
+  const run = tabQueue.then(() => runTabHelper(target));
+  tabQueue = run.catch(() => {});
+  return run;
+}
+
 /** Restores and raises the window; taps Alt once if Windows refuses the switch. */
 function focusWindow(hwnd) {
   const w = win32();
@@ -289,10 +339,13 @@ function focusWindow(hwnd) {
 }
 
 /**
- * Brings the row's terminal to the front. Returns what happened, for the log:
- * { ok, reason?, via?, title? }.
+ * Brings the row's terminal to the front and, in Windows Terminal, selects
+ * its tab. Resolves to what happened, for the log:
+ * { ok, reason?, via?, title?, tab? }. `ok` is about the window: when only
+ * the tab could not be selected, the window still comes forward, and `tab`
+ * (wt-tab.js's answer) says why.
  */
-function focusSession(row, alias) {
+async function focusSession(row, alias) {
   if (!row || !row.pid) return { ok: false, reason: 'no process' };
   if (!win32()) return { ok: false, reason: `native layer: ${nativeStatus().error}` };
   const procs = snapshot();
@@ -302,13 +355,19 @@ function focusSession(row, alias) {
   const byTitle = !row.entrypoint || row.entrypoint === 'cli';
   // A background run's console, if any, is hidden, so asking for it only costs time.
   const ask = isBackground(row) ? undefined : attachedConsoles;
-  const { window, via } = pickWindow(chain, windows(procs), hintsFor(row, alias), { byTitle, consoles: consoleHosts(), ask });
+  const all = windows(procs);
+  const { window, via } = pickWindow(chain, all, hintsFor(row, alias), { byTitle, consoles: consoleHosts(), ask });
   if (!window) return { ok: false, reason: `no window (${chain.map((p) => p.name).join(' < ') || 'no chain'})` };
-  const ok = focusWindow(window.hwnd);
-  return { ok, reason: ok ? undefined : 'Windows kept the foreground', via, title: window.title };
+  // The tab is selected first so the window shows it when it comes forward.
+  const target = tabTarget(window, chain);
+  const tab = target ? await switchTab(target) : undefined;
+  // wt-tab.js names the window the session's console is in, which beats a title match.
+  const shown = (tab && tab.hwnd && all.find((w) => w.hwnd === tab.hwnd)) || window;
+  const ok = focusWindow(shown.hwnd);
+  return { ok, reason: ok ? undefined : 'Windows kept the foreground', via, title: shown.title, tab };
 }
 
 module.exports = {
-  ancestry, chooseWindow, pickWindow, hintsFor, titleScore, sameStart, norm,
+  ancestry, chooseWindow, pickWindow, hintsFor, titleScore, sameStart, norm, tabTarget, describeTab,
   nativeStatus, snapshot, createdAt, windows, consoleHosts, attachedConsoles, focusWindow, focusSession,
 };

@@ -1,7 +1,7 @@
 {
   "name": "claude-sessions-tray",
   "productName": "Claude Sessions",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Tray icon that tracks running Claude Code terminal sessions and alerts when one is done or needs you.",
   "main": "main.js",
   "author": "Dr. Know How",

@@ -99,17 +99,26 @@ function rowFor(key) {
   return sessions[String(key)] || null;
 }
 
-/** Marks the row seen and brings its terminal to the front. Returns focus.js's { ok, reason, … }. */
-function focusRow(row, source) {
+/**
+ * Marks the row seen, brings its terminal to the front and selects its tab.
+ * Resolves to focus.js's { ok, reason, … }; never rejects.
+ */
+async function focusRow(row, source) {
   seen(row.pid);
-  const r = focus.focusSession(row, aliasFor(row));
-  log('focus', source, row.pid, r.ok ? `via ${r.via} ${JSON.stringify(r.title)}` : `failed: ${r.reason}`);
+  let r;
+  try {
+    r = await focus.focusSession(row, aliasFor(row));
+  } catch (e) {
+    r = { ok: false, reason: `focus failed: ${e.message}` };
+  }
+  const tab = focus.describeTab(r.tab);
+  log('focus', source, row.pid, r.ok ? `via ${r.via} ${JSON.stringify(r.title)}` : `failed: ${r.reason}`, ...(tab ? [`(${tab})`] : []));
   return r;
 }
 
-/** True when the window came forward. */
-function activate(row, source) {
-  return focusRow(row, source).ok;
+/** Resolves to true when the window came forward. */
+async function activate(row, source) {
+  return (await focusRow(row, source)).ok;
 }
 
 function toggleMute(sid) {
@@ -377,10 +386,11 @@ async function addSound() {
 /** What the popup's renderer may ask for. popup.js drops messages from anywhere else. */
 function wirePopup() {
   // Answers { ok, notice }: the row shows the notice for a moment when the window stayed put.
-  popup.handle('popup:activate', (key) => {
+  // A tab that would not switch is only logged: the window still came forward.
+  popup.handle('popup:activate', async (key) => {
     const row = rowFor(key);
     if (!row) return { ok: false, notice: focusNotice('no process') };
-    const r = focusRow(row, 'popup');
+    const r = await focusRow(row, 'popup');
     // The popup would cover the window it just brought forward.
     if (r.ok) popup.dismiss();
     return { ok: r.ok, notice: r.ok ? '' : focusNotice(r.reason, row) };

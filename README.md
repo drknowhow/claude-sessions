@@ -42,7 +42,7 @@
 - A popup listing every terminal session with its project, branch, first
   prompt and state.
 - Clicking a session's row, its menu line or its toast brings its terminal
-  window to the front.
+  window to the front and, in Windows Terminal, selects its tab.
 
 Everything stays on your PC. The hooks talk to the tray over `127.0.0.1`
 with a token, and nothing is sent anywhere else.
@@ -195,6 +195,13 @@ on.
   title matches. The Win32 calls go through `koffi`. If it fails to load,
   `tray.log` says so and the tray runs without focus or the start-time
   check.
+- In Windows Terminal the tray also selects the session's tab. A helper
+  process (`wt-tab.js`) attaches to the session's console, reads its title,
+  lists the window's tabs through UI Automation and selects the tab with
+  that title. When several tabs have that title, it adds invisible
+  characters to the console title for under a second, selects the tab that
+  shows them, and puts the title back. A tab that will not switch is
+  written to `tray.log`; the window still comes forward.
 - "Finished" fires 1.5 seconds after Stop. "Needs you" fires on Claude
   Code's permission or question notification, or 12 seconds after the
   prompt appears if that notification never comes. Claude Code's idle
@@ -279,7 +286,7 @@ The promo videos are a [Remotion](https://www.remotion.dev/) project in
 `npm test` runs the unit tests for the reducer, installer, registry reader,
 server, config store, icon drawing, menu and toast text, the hover timing,
 the popup's row model, the sound catalog and assignment, the sound player
-and its audio-output checks, the window choice for focus, and the liveness
+and its audio-output checks, the window and tab choice for focus, and the liveness
 check. CI runs them on Windows for every push and pull request.
 
 `npx electron scripts/check-synths.js` renders each built-in sound offline
@@ -294,9 +301,6 @@ so a newer Claude Code may behave differently.
 
 - An idle session's time counts from when the tray first saw it, not from
   its last turn.
-- Focus picks a window, not a tab. Windows Terminal runs all its tabs in
-  one window, so with several sessions in one window the tray brings the
-  window forward and you pick the tab.
 - A Windows Terminal window's title is its active tab's title. A session
   the tray can match only by title is found while its tab is the active
   one, or while another window's title names the same project; then the
