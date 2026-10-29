@@ -7,7 +7,7 @@ import {K, ROW_STEP, SCENES, TERM_STEP} from './timeline';
 import {Key, lerp, path2, pop, ramp, window01} from './lib/anim';
 import {Backdrop, Disclaimer, Lockup, Mark, Wordmark} from './components/brand';
 import {Cam, Cursor, StageFrame, Taskbar, Toast, TrayIconState, Wallpaper, camTransform, tray} from './components/desktop';
-import {CARD_W, PICKER_H, Popup, backCenter, chipLabelCenter, chipPlayCenter, listHeight, toolCenter} from './components/popup';
+import {CARD_W, PICKER_H, Popup, agentsPillCenter, backCenter, chipLabelCenter, chipPlayCenter, listHeight, toolCenter} from './components/popup';
 import {ShopStage, Terminal, TLine, apiLines, docsLines, inventoryLines, mobileFailedLines, shopLines} from './components/terminal';
 import {CAPTIONS, PICKER, PROMO_HEAD, PROMO_ROWS, TAGLINE_END} from './data';
 
@@ -23,13 +23,22 @@ const POP_LEFT = SW - G.popupRight - CARD_W * ZOOM;
 const LIST_H = listHeight(PROMO_ROWS);
 const LIST_TOP = SH - G.popupBottom - LIST_H * ZOOM;
 const PICK_TOP = SH - G.popupBottom - PICKER_H * ZOOM;
+// The api row (2) has the subagent list. Open, the card would outgrow this small desktop,
+// so it stops 36px under the top edge and the rows scroll, as the app's do past their cap.
+const AGENTS_ROW = 2;
+const CARD_CAP = (SH - G.popupBottom - 36) / ZOOM;
+const agentsOpen = (f: number) => ramp(f, K.agentsClick + 1, K.agentsClick + 11, Easing.out(Easing.cubic));
+const cardHeight = (f: number) => Math.min(CARD_CAP, listHeight(PROMO_ROWS, (i) => (i === AGENTS_ROW ? agentsOpen(f) : 0)));
+const OPEN_TOP = SH - G.popupBottom - cardHeight(K.rowHover) * ZOOM;
 
 const inList = (p: {x: number; y: number}) => ({x: POP_LEFT + p.x * ZOOM, y: LIST_TOP + p.y * ZOOM});
 const ICON = {x: G.icon.x + 2, y: G.icon.y + 2};
 const CHIP = K.chips.map((_, i) => inList(chipPlayCenter(i)));
 const LABEL0 = inList(chipLabelCenter(0));
 const BACK = {x: POP_LEFT + backCenter.x * ZOOM, y: PICK_TOP + backCenter.y * ZOOM};
-const EXPAND0 = inList(toolCenter(0, 'expand'));
+const PILL = inList(agentsPillCenter(AGENTS_ROW));
+const PILL_OPEN = {x: PILL.x, y: PILL.y + OPEN_TOP - LIST_TOP};
+const EXPAND0 = {x: POP_LEFT + toolCenter(0, 'expand').x * ZOOM, y: OPEN_TOP + toolCenter(0, 'expand').y * ZOOM};
 
 // ------------------------------------------------------------ terminals
 
@@ -159,7 +168,9 @@ const promoCam = (f: number): Cam => {
   const zt = ramp(f, K.zoomIn, K.zoomInEnd) * (1 - ramp(f, K.zoomOut, K.zoomOutEnd));
   if (zt > 0) return {z: 1 + 1.2 * zt, cx: SW, cy: SH};
   const pt = ramp(f, K.pushIn, K.pushInEnd) * (1 - ramp(f, K.pushOut, K.pushOutEnd));
-  return {z: 1 + 0.25 * pt, cx: lerp(SW / 2, 654, pt), cy: lerp(SH / 2, 476, pt)};
+  // Ease back a little and up while the subagent list opens, so the taller card stays in frame.
+  const at = ramp(f, K.agentsClick + 2, K.agentsClick + 32);
+  return {z: 1 + lerp(0.25, 0.15, at) * pt, cx: lerp(SW / 2, 654, pt), cy: lerp(SH / 2, lerp(476, 428, at), pt)};
 };
 
 // [start, end, x, y]: glide to (x, y) between the two frames.
@@ -168,8 +179,11 @@ const MOVES: [number, number, number, number][] = [
   ...K.chips.map((c, i): [number, number, number, number] => [i === 0 ? 528 : K.chips[i - 1] + 5, c - 2, CHIP[i].x, CHIP[i].y]),
   [652, K.pickerClick - 2, LABEL0.x, LABEL0.y],
   [704, K.pickerBack - 4, BACK.x, BACK.y],
-  [752, K.rowHover - 2, EXPAND0.x, EXPAND0.y],
-  [846, 880, 1010, 300],
+  [752, K.agentsClick - 4, PILL.x, PILL.y],
+  // Rides up with the pill as the card grows, so it doesn't sit on the list.
+  [K.agentsClick + 1, K.agentsClick + 11, PILL_OPEN.x, PILL_OPEN.y],
+  [872, K.rowHover - 2, EXPAND0.x, EXPAND0.y],
+  [966, 1000, 1010, 300],
 ];
 const CURSOR_KEYS: Key[] = (() => {
   const keys: Key[] = [{f: K.cursorIn, x: 560, y: 560}];
@@ -180,10 +194,10 @@ const CURSOR_KEYS: Key[] = (() => {
   }
   return keys;
 })();
-const CLICKS = [...K.chips, K.pickerClick, K.pickerBack, K.rowClick];
+const CLICKS = [...K.chips, K.pickerClick, K.pickerBack, K.agentsClick, K.rowClick];
 
 const PromoCursor: React.FC<{f: number}> = ({f}) => {
-  const opacity = ramp(f, K.cursorIn, K.cursorIn + 8) * (1 - ramp(f, 866, 880));
+  const opacity = ramp(f, K.cursorIn, K.cursorIn + 8) * (1 - ramp(f, 986, 1000));
   if (opacity <= 0) return null;
   const p = path2(f, CURSOR_KEYS);
   const press = Math.max(...CLICKS.map((c) => window01(f, c - 3, c + 4, 3, 4)));
@@ -209,6 +223,9 @@ const PromoPopup: React.FC<{f: number}> = ({f}) => {
       labelHover: 0,
       expandHover: 0,
       expandPress: 0,
+      agentsHover: 0,
+      agentsPress: 0,
+      agentsOpen: 0,
     };
     if (i < K.chips.length) {
       const c = K.chips[i];
@@ -222,6 +239,12 @@ const PromoPopup: React.FC<{f: number}> = ({f}) => {
       e.hover = Math.max(e.hover, e.labelHover, window01(f, K.rowHover - 4, K.popupClose + 6, 4, 2));
       e.expandHover = window01(f, K.rowHover - 2, K.popupClose + 6, 4, 2);
       e.expandPress = window01(f, K.rowClick - 3, K.rowClick + 6, 3, 4);
+    }
+    if (i === AGENTS_ROW) {
+      e.hover = Math.max(e.hover, window01(f, K.agentsClick - 8, 876, 4, 4));
+      e.agentsHover = window01(f, K.agentsClick - 6, 876, 3, 4);
+      e.agentsPress = window01(f, K.agentsClick - 3, K.agentsClick + 4, 3, 4);
+      e.agentsOpen = agentsOpen(f);
     }
     return e;
   };
@@ -249,7 +272,7 @@ const PromoPopup: React.FC<{f: number}> = ({f}) => {
         picker={PICKER}
         backHover={window01(f, K.pickerBack - 8, K.pickerBack + 4, 4, 3)}
         zoom={ZOOM}
-        height={lerp(LIST_H, PICKER_H, view)}
+        height={lerp(cardHeight(f), PICKER_H, view)}
       />
     </div>
   );

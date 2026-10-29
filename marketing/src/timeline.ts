@@ -4,7 +4,7 @@
 
 export const FPS = 30;
 
-export type SceneId = 'tabs' | 'waiting' | 'tray' | 'hover' | 'sounds' | 'jump' | 'toast' | 'end';
+export type SceneId = 'tabs' | 'waiting' | 'tray' | 'hover' | 'sounds' | 'agents' | 'jump' | 'toast' | 'end';
 
 export const SCENES: {id: SceneId; from: number; dur: number}[] = [
   {id: 'tabs', from: 0, dur: 120},
@@ -12,12 +12,13 @@ export const SCENES: {id: SceneId; from: number; dur: number}[] = [
   {id: 'tray', from: 255, dur: 150},
   {id: 'hover', from: 405, dur: 135},
   {id: 'sounds', from: 540, dur: 225},
-  {id: 'jump', from: 765, dur: 165},
-  {id: 'toast', from: 930, dur: 135},
-  {id: 'end', from: 1065, dur: 150},
+  {id: 'agents', from: 765, dur: 120},
+  {id: 'jump', from: 885, dur: 165},
+  {id: 'toast', from: 1050, dur: 135},
+  {id: 'end', from: 1185, dur: 150},
 ];
 
-export const PROMO_DUR = 1215; // 40.5 s
+export const PROMO_DUR = 1335; // 44.5 s
 
 /** Key frames of the promo, absolute. */
 export const K = {
@@ -43,19 +44,20 @@ export const K = {
   chips: [552, 575, 598, 621, 644],
   pickerClick: 686,
   pickerBack: 738,
-  rowHover: 782,
-  rowClick: 792,
-  popupClose: 794,
-  pushOut: 794,
-  pushOutEnd: 826,
-  front: 800,
-  keyPress: 830,
-  answer: 836,
-  working: 842,
-  testsPass: 872,
-  finished: 952,
-  stageOut: 1050,
-  end: 1065,
+  agentsClick: 782, // the api row's subagent pill; its list stays open until the popup closes
+  rowHover: 902,
+  rowClick: 912,
+  popupClose: 914,
+  pushOut: 914,
+  pushOutEnd: 946,
+  front: 920,
+  keyPress: 950,
+  answer: 956,
+  working: 962,
+  testsPass: 992,
+  finished: 1072,
+  stageOut: 1170,
+  end: 1185,
 };
 
 export const TERM_STEP = 12;
@@ -77,23 +79,24 @@ export const CUES: {frame: number; sound: SoundId; kind: 'needs' | 'done' | 'pla
   {frame: K.finished, sound: 'marimba', kind: 'done'},
 ];
 
-/** Hero GIF: 9 s, loops. */
-export const HERO_DUR = 270;
+/** Hero GIF: 12 s, loops. */
+export const HERO_DUR = 360;
 export const H = {
   needs: 18,
   cursorGo: 45,
   cursorAtIcon: 68,
   popupOpen: 72,
   rowsIn: 78, // +4 per row
-  rowHover: 124,
-  rowClick: 150,
-  popupClose: 152,
-  front: 158,
-  keyPress: 180,
-  answer: 186,
-  working: 190,
-  cursorBack: 200,
-  cursorHome: 230,
+  agentsClick: 124, // the docs-site row's subagent pill; its list stays open until the popup closes
+  rowHover: 214,
+  rowClick: 240,
+  popupClose: 242,
+  front: 248,
+  keyPress: 270,
+  answer: 276,
+  working: 280,
+  cursorBack: 290,
+  cursorHome: 320,
   /** The cursor clicks the docs-site window: it comes to the front again, as at frame 0. */
-  reset: 240,
+  reset: 330,
 };

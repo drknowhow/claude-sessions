@@ -1,6 +1,6 @@
-// README GIF: the icon turns amber, the popup opens, a click on the needs-you row's
-// expand button brings its terminal forward, the prompt is answered and the icon goes
-// back to blue.
+// README GIF: the icon turns amber, the popup opens, a click on the docs-site row's
+// subagent pill lists its runs, a click on the needs-you row's expand button brings
+// its terminal forward, the prompt is answered and the icon goes back to blue.
 // Every animated value returns to its frame-0 state by HERO_DUR, so the GIF loops.
 import React from 'react';
 import {AbsoluteFill, Easing, useCurrentFrame} from 'remotion';
@@ -8,7 +8,7 @@ import {C} from './theme';
 import {H, HERO_DUR} from './timeline';
 import {Key, path2, pop, ramp, window01} from './lib/anim';
 import {Cursor, Taskbar, TrayIconState, Wallpaper, tray} from './components/desktop';
-import {CARD_W, Popup, listHeight, toolCenter} from './components/popup';
+import {CARD_W, Popup, agentsHeight, agentsPillCenter, listHeight, toolCenter} from './components/popup';
 import {Terminal, TLine, docsLines, inventoryLines, mobileWorkingLines, shopLines} from './components/terminal';
 import {HERO_HEAD, HERO_ROWS} from './data';
 
@@ -20,7 +20,11 @@ const PERIOD = 45; // divides HERO_DUR, so pulses loop cleanly
 const G = tray(W, HH);
 const POP_LEFT = W - G.popupRight - CARD_W * ZOOM;
 const LIST_TOP = HH - G.popupBottom - listHeight(HERO_ROWS) * ZOOM;
-const EXPAND0 = {x: POP_LEFT + toolCenter(0, 'expand').x * ZOOM, y: LIST_TOP + toolCenter(0, 'expand').y * ZOOM};
+// The card grows upward when docs-site's subagent list opens, taking the rows above the list with it.
+const OPEN_TOP = LIST_TOP - agentsHeight(HERO_ROWS[1].agents!) * ZOOM;
+const PILL1 = {x: POP_LEFT + agentsPillCenter(1).x * ZOOM, y: LIST_TOP + agentsPillCenter(1).y * ZOOM};
+const PILL1_OPEN = {x: PILL1.x, y: PILL1.y + OPEN_TOP - LIST_TOP};
+const EXPAND0 = {x: POP_LEFT + toolCenter(0, 'expand').x * ZOOM, y: OPEN_TOP + toolCenter(0, 'expand').y * ZOOM};
 const ICON = {x: G.icon.x + 2, y: G.icon.y + 2};
 // Inside the docs-site window but clear of the shop window, so the closing click
 // refocuses docs-site and the last frame matches the first.
@@ -52,7 +56,12 @@ const CURSOR_KEYS: Key[] = [
   {f: H.cursorGo, ...HOME},
   {f: H.cursorAtIcon, ...ICON},
   {f: 100, ...ICON},
-  {f: 122, ...EXPAND0},
+  {f: 120, ...PILL1},
+  // Rides up with the pill as the list opens, so it doesn't sit on the list.
+  {f: H.agentsClick + 1, ...PILL1},
+  {f: H.agentsClick + 9, ...PILL1_OPEN},
+  {f: 190, ...PILL1_OPEN},
+  {f: 212, ...EXPAND0},
   {f: H.cursorBack, ...EXPAND0},
   {f: H.cursorHome, ...HOME},
 ];
@@ -66,7 +75,7 @@ const HeroStage: React.FC<{f: number}> = ({f}) => {
     window01(f, H.keyPress - 2, H.answer + 2, 2, 4),
     `(${Math.max(1, Math.floor((f - H.answer) / 30) + 1)}s)`,
   );
-  const clicks = [H.rowClick, H.reset];
+  const clicks = [H.agentsClick, H.rowClick, H.reset];
   const press = Math.max(...clicks.map((c) => window01(f, c - 3, c + 4, 3, 4)));
   const c = clicks.find((k) => f >= k && f < k + 14);
   const ripple = c === undefined ? 0 : (f - c) / 14;
@@ -124,9 +133,12 @@ const HeroStage: React.FC<{f: number}> = ({f}) => {
             zoom={ZOOM}
             fx={(i) => ({
               appear: ramp(f, H.rowsIn + 4 * i, H.rowsIn + 10 + 4 * i, Easing.out(Easing.cubic)),
-              hover: i === 0 ? window01(f, 120, 156, 4, 2) : 0,
-              expandHover: i === 0 ? window01(f, 122, 156, 4, 2) : 0,
+              hover: i === 0 ? window01(f, 210, 246, 4, 2) : i === 1 ? window01(f, 116, 194, 4, 4) : 0,
+              expandHover: i === 0 ? window01(f, 212, 246, 4, 2) : 0,
               expandPress: i === 0 ? window01(f, H.rowClick - 3, H.rowClick + 4, 3, 4) : 0,
+              agentsHover: i === 1 ? window01(f, 118, 194, 3, 4) : 0,
+              agentsPress: i === 1 ? window01(f, H.agentsClick - 3, H.agentsClick + 4, 3, 4) : 0,
+              agentsOpen: i === 1 ? ramp(f, H.agentsClick + 1, H.agentsClick + 9, Easing.out(Easing.cubic)) : 0,
             })}
           />
         </div>

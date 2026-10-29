@@ -23,11 +23,11 @@
 </p>
 
 <p align="center">
-  <img src="docs/hero.gif" alt="The tray icon turning amber, then green, and the popup listing three sessions" width="860">
+  <img src="docs/hero.gif" alt="The tray icon turning amber, the popup listing four sessions, one row opening its list of subagents, and a click bringing the waiting terminal forward" width="860">
 </p>
 
 <p align="center">
-  <a href="https://drknowhow.github.io/claude-sessions/">▶ Watch the 40-second promo with sound</a>
+  <a href="https://drknowhow.github.io/claude-sessions/">▶ Watch the 45-second promo with sound</a>
 </p>
 
 <p align="center"><sub>Claude Sessions is an unofficial tool. It is not affiliated with or endorsed by Anthropic.</sub></p>

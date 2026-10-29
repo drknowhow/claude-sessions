@@ -43,7 +43,7 @@ CHORDS = {
 # Chord per scene: settle, lift at the tray, open up for the sounds, lean in for the jump, home.
 SCENE_CHORD = {
     "tabs": "Cmaj9", "waiting": "Cmaj9", "tray": "Am9", "hover": "Am9",
-    "sounds": "Fmaj9", "jump": "G6", "toast": "Cmaj9", "end": "Cmaj9",
+    "sounds": "Fmaj9", "agents": "Fmaj9", "jump": "G6", "toast": "Cmaj9", "end": "Cmaj9",
 }
 
 

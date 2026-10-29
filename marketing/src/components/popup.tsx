@@ -12,7 +12,23 @@ export type RowData = {
   line: string;
   sound?: string; // chip label; omitted for ended rows
   muted?: boolean;
+  agents?: AgentsData;
 };
+
+export type AgentState = 'running' | 'needs' | 'done' | 'failed' | 'stopped';
+
+/** One subagent line (state.js agentText / agentTime); a running run's time can tick with the frame. */
+export type AgentRun = {
+  key: string;
+  state: AgentState;
+  type: string;
+  text: string;
+  time: string | ((frame: number) => string);
+  depth?: number;
+};
+
+/** A row's subagent runs. The pill shows `count` in the colour of `tone`: live (running), needs or idle (all finished). */
+export type AgentsData = {count: number; tone: 'live' | 'needs' | 'idle'; runs: AgentRun[]};
 
 export type PickerData = {
   forText: string;
@@ -43,7 +59,12 @@ const hasChip = (r: RowData) => !!r.sound && r.state !== 'ended';
 // An ended row has no chip, so its bottom line is just the state line.
 const rowHeight = (r: RowData) => (hasChip(r) ? ROW_H : ROW_H - BOTTOM_H + 11.5 * 1.35);
 
-export const listHeight = (rows: RowData[]) => BORDER * 2 + HEAD_H + ROWS_PAD * 2 + rows.reduce((h, r) => h + rowHeight(r), 0);
+/** Height the open subagent list adds under its row: 5px over, a 20px line per run, 1px under. */
+export const agentsHeight = (a: AgentsData) => 5 + a.runs.length * 20 + 1;
+
+/** Card height for the list; `open(i)` is how far row i's subagent list is open, 0..1. */
+export const listHeight = (rows: RowData[], open: (i: number) => number = () => 0) =>
+  BORDER * 2 + HEAD_H + ROWS_PAD * 2 + rows.reduce((h, r, i) => h + rowHeight(r) + (r.agents ? agentsHeight(r.agents) * open(i) : 0), 0);
 export const PICKER_H = BORDER * 2 + HEAD_H + (8 + 2 * 2 + 24) + (4 + (8 + 3 + 11 * 1.35) + SOUNDS.length * 28 + 6);
 
 // Ended rows sort under the live ones, so every row above a live row is full height.
@@ -51,11 +72,13 @@ const rowTop = (i: number) => BORDER + HEAD_H + ROWS_PAD + i * ROW_H;
 const topLineY = (i: number) => rowTop(i) + ROW_PAD_Y + TOP_H / 2;
 const bottomLineY = (i: number) => rowTop(i) + ROW_PAD_Y + TOP_H + BOTTOM_GAP + BOTTOM_H / 2;
 
-/** Centre of one of row i's title-line buttons (22px each, 1px apart, right-aligned). */
+/** Centre of one of row i's title-line buttons (22px each, 1px apart, right-aligned). Copy and folder sit further left on a row with a subagent pill. */
 export const toolCenter = (i: number, tool: 'copy' | 'folder' | 'expand' | 'more') => {
   const fromRight = {more: 0, expand: 1, folder: 2, copy: 3}[tool];
   return {x: ROW_RIGHT - 11 - fromRight * 23, y: topLineY(i)};
 };
+/** Row i's subagent pill, just left of its expand button: the centre of its chevron, so a cursor there leaves the count in view. */
+export const agentsPillCenter = (i: number) => ({x: ROW_RIGHT - 2 * 23 - 3 - 4.5, y: topLineY(i)});
 /** Centre of row i's play button, from the card's top-left corner. */
 export const chipPlayCenter = (i: number) => ({x: ROW_RIGHT - 11, y: bottomLineY(i)});
 /** Roughly the centre of row i's chip label (the sound name). */
@@ -118,6 +141,8 @@ const ROW_ICON = {
   more: 'M3.5 8h.01M8 8h.01M12.5 8h.01',
   soundOn: `${SPEAKER}M10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6.3 6.3 0 0 1 0 9`,
   soundOff: `${SPEAKER}M10.5 6l4 4M14.5 6l-4 4`,
+  agents: 'M4 2.5v8a2 2 0 0 0 2 2h6.5M4 7h8.5',
+  chevron: 'M6 4l4 4-4 4',
 };
 
 const RowIcon: React.FC<{d: string; size: number; weight: number}> = ({d, size, weight}) => (
@@ -128,15 +153,17 @@ const RowIcon: React.FC<{d: string; size: number; weight: number}> = ({d, size, 
 
 // ------------------------------------------------------------ pieces
 
+// A subagent line's 7px dot has a thinner ring and border (popup.css .agent .dot).
 export const Dot: React.FC<{state: SessionState; frame: number; period: number; size?: number}> = ({state, frame, period, size = 9}) => {
+  const small = size < 9;
   const base: React.CSSProperties = {flex: 'none', width: size, height: size, borderRadius: '50%', boxSizing: 'border-box'};
-  if (state === 'ended') return <span style={{...base, background: 'transparent', border: `1.5px solid ${C.popFaint}`}} />;
+  if (state === 'ended') return <span style={{...base, background: 'transparent', border: `${small ? 1.2 : 1.5}px solid ${C.popFaint}`}} />;
   return (
     <span
       style={{
         ...base,
         background: STATE_COLOR[state],
-        boxShadow: state === 'needs' ? '0 0 0 3px rgba(245,158,11,.22)' : undefined,
+        boxShadow: state === 'needs' ? `0 0 0 ${small ? 2 : 3}px rgba(245,158,11,.22)` : undefined,
         opacity: state === 'working' ? pulse(frame, period) : 1,
       }}
     />
@@ -159,6 +186,9 @@ type RowFx = {
   reveal: number; // 0..1 copy and folder buttons; the app shows them while the row is hovered
   expandHover: number; // 0..1
   expandPress: number; // 0..1
+  agentsOpen: number; // 0..1 subagent list
+  agentsHover: number; // 0..1
+  agentsPress: number; // 0..1
 };
 
 /** Hover and press fill for a button, the app's --hover and --press. */
@@ -201,9 +231,6 @@ const Row: React.FC<{r: RowData; fx: RowFx; frame: number; period: number}> = ({
   return (
     <div
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 9,
         padding: `${ROW_PAD_Y}px 4px ${ROW_PAD_Y}px 8px`,
         borderRadius: 7,
         background: bg,
@@ -211,87 +238,167 @@ const Row: React.FC<{r: RowData; fx: RowFx; frame: number; period: number}> = ({
         transform: `translateY(${(1 - fx.appear) * 10}px)`,
       }}
     >
-      <Dot state={r.state} frame={frame} period={period} />
-      <div style={{flex: 1, minWidth: 0}}>
-        <div style={line}>
-          <div style={{...ellipsis, flex: 1, minWidth: 0, color: C.popFg}}>
-            <span style={{fontWeight: 600}}>{r.where}</span>
-            {r.name ? <span style={{color: C.popMuted}}>{` · ${r.name}`}</span> : null}
-          </div>
-          <div style={{flex: 'none', display: 'flex', alignItems: 'center', gap: 1, margin: '-3px 0'}}>
-            <Tool d={ROW_ICON.copy} color={C.popFaint} opacity={fx.reveal} />
-            <Tool d={ROW_ICON.folder} color={C.popFaint} opacity={fx.reveal} />
-            {dimmed ? null : <Tool d={ROW_ICON.expand} color={C.popMuted} hover={fx.expandHover} press={fx.expandPress} />}
-            <Tool d={ROW_ICON.more} color={C.popFaint} weight={2.2} />
-          </div>
-        </div>
-        <div style={{...line, marginTop: BOTTOM_GAP}}>
-          <div style={{...ellipsis, flex: 1, minWidth: 0, color: lineColor(r.state), fontSize: 11.5}}>{r.line}</div>
-          {hasChip(r) ? (
-            <div
-              style={{
-                flex: 'none',
-                display: 'inline-flex',
-                alignItems: 'center',
-                height: 20,
-                margin: '-2px 0',
-                borderRadius: 10,
-                background: fx.lit > 0.01 ? litBg : C.popChip,
-                color: chipColor,
-                fontSize: 11,
-                maxWidth: 128,
-                boxShadow: ringAlpha ? `0 0 0 ${2 + fx.ring * 9}px rgba(110,168,254,${ringAlpha})` : undefined,
-              }}
-            >
-              <span
-                style={{
-                  flex: 'none',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 22,
-                  height: '100%',
-                  paddingLeft: 2,
-                  boxSizing: 'border-box',
-                  borderRadius: '10px 0 0 10px',
-                }}
-              >
-                <RowIcon d={r.muted ? ROW_ICON.soundOff : ROW_ICON.soundOn} size={12} weight={1.4} />
-              </span>
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  height: '100%',
-                  padding: '0 4px 0 1px',
-                  minWidth: 0,
-                  background: fill(fx.labelHover),
-                  color: fx.labelHover ? C.popFg : undefined,
-                }}
-              >
-                <span style={{...ellipsis, textDecoration: r.muted ? 'line-through' : undefined}}>{r.sound}</span>
-              </span>
-              <span
-                style={{
-                  flex: 'none',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 22,
-                  height: '100%',
-                  borderRadius: '0 10px 10px 0',
-                  background: fx.playPress ? `rgba(255,255,255,${0.11 * fx.playPress})` : undefined,
-                }}
-              >
-                <PlayIcon />
-              </span>
+      <div style={{display: 'flex', alignItems: 'center', gap: 9}}>
+        <Dot state={r.state} frame={frame} period={period} />
+        <div style={{flex: 1, minWidth: 0}}>
+          <div style={line}>
+            <div style={{...ellipsis, flex: 1, minWidth: 0, color: C.popFg}}>
+              <span style={{fontWeight: 600}}>{r.where}</span>
+              {r.name ? <span style={{color: C.popMuted}}>{` · ${r.name}`}</span> : null}
             </div>
-          ) : null}
+            <div style={{flex: 'none', display: 'flex', alignItems: 'center', gap: 1, margin: '-3px 0'}}>
+              <Tool d={ROW_ICON.copy} color={C.popFaint} opacity={fx.reveal} />
+              <Tool d={ROW_ICON.folder} color={C.popFaint} opacity={fx.reveal} />
+              {r.agents && !dimmed ? <AgentsPill a={r.agents} open={fx.agentsOpen} hover={fx.agentsHover} press={fx.agentsPress} /> : null}
+              {dimmed ? null : <Tool d={ROW_ICON.expand} color={C.popMuted} hover={fx.expandHover} press={fx.expandPress} />}
+              <Tool d={ROW_ICON.more} color={C.popFaint} weight={2.2} />
+            </div>
+          </div>
+          <div style={{...line, marginTop: BOTTOM_GAP}}>
+            <div style={{...ellipsis, flex: 1, minWidth: 0, color: lineColor(r.state), fontSize: 11.5}}>{r.line}</div>
+            {hasChip(r) ? (
+              <div
+                style={{
+                  flex: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  height: 20,
+                  margin: '-2px 0',
+                  borderRadius: 10,
+                  background: fx.lit > 0.01 ? litBg : C.popChip,
+                  color: chipColor,
+                  fontSize: 11,
+                  maxWidth: 128,
+                  boxShadow: ringAlpha ? `0 0 0 ${2 + fx.ring * 9}px rgba(110,168,254,${ringAlpha})` : undefined,
+                }}
+              >
+                <span
+                  style={{
+                    flex: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 22,
+                    height: '100%',
+                    paddingLeft: 2,
+                    boxSizing: 'border-box',
+                    borderRadius: '10px 0 0 10px',
+                  }}
+                >
+                  <RowIcon d={r.muted ? ROW_ICON.soundOff : ROW_ICON.soundOn} size={12} weight={1.4} />
+                </span>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    height: '100%',
+                    padding: '0 4px 0 1px',
+                    minWidth: 0,
+                    background: fill(fx.labelHover),
+                    color: fx.labelHover ? C.popFg : undefined,
+                  }}
+                >
+                  <span style={{...ellipsis, textDecoration: r.muted ? 'line-through' : undefined}}>{r.sound}</span>
+                </span>
+                <span
+                  style={{
+                    flex: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 22,
+                    height: '100%',
+                    borderRadius: '0 10px 10px 0',
+                    background: fx.playPress ? `rgba(255,255,255,${0.11 * fx.playPress})` : undefined,
+                  }}
+                >
+                  <PlayIcon />
+                </span>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
+      {r.agents && !dimmed && fx.agentsOpen > 0 ? <AgentList a={r.agents} open={fx.agentsOpen} frame={frame} period={period} /> : null}
     </div>
   );
 };
+
+// ------------------------------------------------------------ subagents (popup.css .agents-pill, .row-agents)
+
+const AgentsPill: React.FC<{a: AgentsData; open: number; hover: number; press: number}> = ({a, open, hover, press}) => {
+  // The live and needs colours outrank :hover in the app's CSS; only the grey pill lightens.
+  const color = a.tone === 'live' ? C.working : a.tone === 'needs' ? C.needsText : mixHex(C.popFaint, C.popFg, Math.max(hover, press));
+  const chipBg = open > 0 ? `rgba(255,255,255,${0.075 * open})` : undefined;
+  return (
+    <span
+      style={{
+        flex: 'none',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 2,
+        height: 22,
+        padding: '0 3px 0 4px',
+        borderRadius: 5,
+        color,
+        background: chipBg ?? fill(hover, press),
+        fontSize: 11,
+        fontWeight: 600,
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      <RowIcon d={ROW_ICON.agents} size={13} weight={1.5} />
+      <span>{a.count}</span>
+      <span style={{display: 'inline-flex', transform: `rotate(${90 * open}deg)`}}>
+        <RowIcon d={ROW_ICON.chevron} size={9} weight={1.8} />
+      </span>
+    </span>
+  );
+};
+
+const AGENT_DOT: Record<AgentState, SessionState> = {running: 'working', needs: 'needs', done: 'done', failed: 'error', stopped: 'ended'};
+
+const AgentList: React.FC<{a: AgentsData; open: number; frame: number; period: number}> = ({a, open, frame, period}) => (
+  <div style={{height: agentsHeight(a) * open, overflow: 'hidden', opacity: open}}>
+    <div style={{margin: '5px 0 1px 18px', paddingLeft: 8, borderLeft: `1px solid ${C.popLine}`}}>
+      {a.runs.map((run) => {
+        const finished = run.state === 'done' || run.state === 'stopped' || run.state === 'failed';
+        return (
+          <div
+            key={run.key}
+            style={{display: 'flex', alignItems: 'center', gap: 6, height: 20, paddingLeft: 12 * (run.depth ?? 0), fontSize: 11.5, color: C.popMuted}}
+          >
+            <Dot state={AGENT_DOT[run.state]} frame={frame} period={period} size={7} />
+            <span
+              style={{
+                ...ellipsis,
+                flex: 'none',
+                maxWidth: 96,
+                color: finished ? C.popMuted : C.popFg,
+                fontWeight: finished ? 500 : 600,
+                fontSize: 11,
+              }}
+            >
+              {run.type}
+            </span>
+            <span style={{...ellipsis, flex: 1, minWidth: 0}}>{run.text}</span>
+            <span
+              style={{
+                flex: 'none',
+                paddingRight: 3,
+                color: run.state === 'needs' ? C.needsText : run.state === 'failed' ? C.errorText : C.popFaint,
+                fontSize: 11,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {typeof run.time === 'function' ? run.time(frame) : run.time}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+);
 
 const Head: React.FC<{children: React.ReactNode; sub?: boolean}> = ({children, sub}) => (
   <div
@@ -343,17 +450,20 @@ export type PopupProps = {
   picker?: PickerData;
   backHover?: number;
   zoom: number;
-  /** Card height in css px; leave out to fit the content. */
+  /** Card height in css px; leave out to fit the content. A list taller than this scrolls, at the top. */
   height?: number;
 };
 
 export const Popup: React.FC<PopupProps> = ({title, counts, top, rows, frame, period, fx, view = 0, picker, backHover = 0, zoom, height}) => {
   const showPicker = view >= 0.5 && picker;
   const contentOpacity = showPicker ? (view - 0.5) * 2 : 1 - view * 2;
+  const full = listHeight(rows, (i) => (fx ? fx(i).agentsOpen ?? 0 : 0));
+  const scrolls = height !== undefined && view === 0 && height < full - 1;
   return (
     <div style={{zoom}}>
       <div
         style={{
+          position: 'relative',
           width: CARD_W,
           height,
           boxSizing: 'border-box',
@@ -408,6 +518,9 @@ export const Popup: React.FC<PopupProps> = ({title, counts, top, rows, frame, pe
                         reveal: e.reveal ?? Math.max(e.hover ?? 0, e.press ?? 0),
                         expandHover: e.expandHover ?? 0,
                         expandPress: e.expandPress ?? 0,
+                        agentsOpen: e.agentsOpen ?? 0,
+                        agentsHover: e.agentsHover ?? 0,
+                        agentsPress: e.agentsPress ?? 0,
                       }}
                     />
                   );
@@ -416,10 +529,26 @@ export const Popup: React.FC<PopupProps> = ({title, counts, top, rows, frame, pe
             </>
           )}
         </div>
+        {scrolls ? <ScrollThumb visible={height! - BORDER * 2 - HEAD_H} content={full - BORDER * 2 - HEAD_H} /> : null}
       </div>
     </div>
   );
 };
+
+/** The rows' scrollbar thumb at scroll 0: an 8px track whose thumb is inset 2px (popup.css scrollbars). */
+const ScrollThumb: React.FC<{visible: number; content: number}> = ({visible, content}) => (
+  <div
+    style={{
+      position: 'absolute',
+      top: HEAD_H + 2,
+      right: 2,
+      width: 4,
+      height: (visible * visible) / content - 4,
+      borderRadius: 2,
+      background: C.popPress,
+    }}
+  />
+);
 
 const PickerView: React.FC<{picker: PickerData; backHover: number}> = ({picker, backHover}) => (
   <>

@@ -1,11 +1,32 @@
 // Fixture sessions shown in the popup. Wording follows the app's own rules
 // (state.js stateLine / rowLabel, view.js countsText).
 import type {RowData} from './components/popup';
+import {FPS, H, K} from './timeline';
+
+/** A running subagent's time column: `base` seconds at frame `at`, then counting up. */
+const ticking = (base: number, at: number) => (f: number) => `${base + Math.floor(Math.max(0, f - at) / FPS)}s`;
 
 export const PROMO_ROWS: RowData[] = [
   {key: 'shop', state: 'needs', where: 'shop · checkout', name: 'Fix the tax rounding on the checkout page', line: 'Needs permission: Bash · 6m', sound: 'Marimba'},
   {key: 'mobile', state: 'error', where: 'mobile-app · main', line: 'Error: API overloaded (529)', sound: 'Glass'},
-  {key: 'api', state: 'done', where: 'api · refactor', name: 'Split the auth middleware into smaller pieces', line: 'Done 2m ago · 2 background tasks', sound: 'Wood'},
+  {
+    key: 'api',
+    state: 'done',
+    where: 'api · refactor',
+    name: 'Split the auth middleware into smaller pieces',
+    line: 'Done 2m ago · 2 background tasks',
+    sound: 'Wood',
+    agents: {
+      count: 3,
+      tone: 'live',
+      runs: [
+        {key: 'a1', state: 'running', type: 'Explore', text: 'Map the auth middleware · Grep', time: '4m'},
+        {key: 'a2', state: 'running', type: 'general-purpose', text: 'Review the new handlers · Agent', time: '3m'},
+        {key: 'a3', state: 'running', type: 'Explore', text: 'Find the session tests · Read', time: ticking(40, K.popupOpen), depth: 1},
+        {key: 'a4', state: 'done', type: 'Plan', text: 'Check the route order', time: '2m ago'},
+      ],
+    },
+  },
   {key: 'docs', state: 'working', where: 'docs-site · search', name: 'Add a search box to the docs sidebar', line: 'Working 6m · Edit', sound: 'Blip'},
   {key: 'inv', state: 'idle', where: 'inventory', name: 'Why does the order total drift by a cent?', line: 'Idle 41m', sound: 'Chirp'},
   {key: 'bench', state: 'ended', where: 'benchmarks · nightly', line: 'Ended 3m ago'},
@@ -17,7 +38,23 @@ export const PROMO_HEAD = {title: '5 sessions', counts: '1 needs you, 1 failed, 
 
 export const HERO_ROWS: RowData[] = [
   {key: 'shop', state: 'needs', where: 'shop · checkout', name: 'Fix the tax rounding on the checkout page', line: 'Needs permission: Bash · 1m', sound: 'Marimba'},
-  {key: 'docs', state: 'working', where: 'docs-site · search', name: 'Add a search box to the docs sidebar', line: 'Working 6m · Edit', sound: 'Blip'},
+  {
+    key: 'docs',
+    state: 'working',
+    where: 'docs-site · search',
+    name: 'Add a search box to the docs sidebar',
+    line: 'Working 6m · Edit',
+    sound: 'Blip',
+    agents: {
+      count: 2,
+      tone: 'live',
+      runs: [
+        {key: 'd1', state: 'running', type: 'Explore', text: 'Find the sidebar component · Grep', time: ticking(38, H.popupOpen)},
+        {key: 'd2', state: 'running', type: 'Plan', text: 'Plan the index format · Read', time: ticking(12, H.popupOpen)},
+        {key: 'd3', state: 'done', type: 'Explore', text: 'List the search libraries in use', time: '2m ago'},
+      ],
+    },
+  },
   {key: 'mobile', state: 'working', where: 'mobile-app · main', name: 'Bump the SDK and rebuild the release', line: 'Working 2m · Bash', sound: 'Glass'},
   {key: 'inv', state: 'idle', where: 'inventory', name: 'Why does the order total drift by a cent?', line: 'Idle 41m', sound: 'Chirp'},
   {key: 'bench', state: 'ended', where: 'benchmarks · nightly', line: 'Ended 3m ago'},
@@ -33,6 +70,7 @@ export const CAPTIONS = [
   'Claude Sessions sits in your tray and tells you.',
   'Hover for every session, most urgent first.',
   'Each project plays its own sound, so you can tell them apart without looking.',
+  'Click the branch button to see what a session’s subagents are doing.',
   'Click a row to jump to its terminal.',
   'A toast and a chime when a turn finishes, fails or needs you.',
 ];
